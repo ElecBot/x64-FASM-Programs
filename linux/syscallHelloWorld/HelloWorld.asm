@@ -12,6 +12,7 @@ syscall_exit = 60
 ;Standard output file value extracted from linux LibC Manual: https://www.gnu.org/software/libc/manual/html_mono/libc.html
 STDOUT_FILENO = 1
 
+;Tells FASM to create a linkable object file when assembled
 public _start
 _start:
 
