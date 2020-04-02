@@ -3,8 +3,10 @@
 ;Linux system call useage changes based on the system architecture which changes the calling convention and call numbers:
 ; http://man7.org/linux/man-pages/man2/syscall.2.html 
 
-format ELF64 ; x86-64 architecture version of ELF
+format ELF64 executable 3 ;x86-64 architecture version of ELF targeting linux
+entry start ;Define Label to Use for the Entry Point
 
+;Assembler Variables
 ;Fundamental x86-64 linux system call numbers extracted from the proper unistd.h/unistd_64.h definition file 
 syscall_write = 1
 syscall_exit = 60
@@ -12,9 +14,9 @@ syscall_exit = 60
 ;Standard output file value extracted from linux LibC Manual: https://www.gnu.org/software/libc/manual/html_mono/libc.html
 STDOUT_FILENO = 1
 
-;Tells FASM to create a linkable object file when assembled
-public _start
-_start:
+segment readable executable ;Read-only Executable Code Segment
+
+start: ;Entry Point Label
 
 ;The following syscalls utilize the generic x86-64 calling convention alongside the syscall convention.
 ; Generic calling convention: https://en.wikipedia.org/wiki/X86_calling_conventions#System_V_AMD64_ABI
@@ -30,6 +32,8 @@ _start:
 	mov	eax, syscall_exit	
 	xor	edi, edi		;Clear the system call return code to zero
 	syscall
+
+segment readable ;Read-only Data Segment
 
 helloStr:	;Label to reference the beginning of the string
 	db 'Hello World!',10	; String where each character is a byte and 10 represents a new line
