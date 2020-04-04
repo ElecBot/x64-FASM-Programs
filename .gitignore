@@ -1,0 +1,6 @@
+# Assembly Debug Files
+*.fas
+*.lst
+
+# Object files
+*.o
