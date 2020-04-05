@@ -6,7 +6,7 @@
 ;-------------------;
 ;FASM Program Header;
 ;-------------------;
-format PE64 EFIboot; at 0x400000 on '../UEFI-Program-MZ-DOS-Stub.exe'
+format PE64 EFIboot at 0x400000 on '../UEFI-Program-MZ-DOS-Stub.exe'
 entry start		;Label name of the entry point
 
 ;-----------------;
