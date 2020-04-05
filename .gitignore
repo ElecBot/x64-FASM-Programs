@@ -4,3 +4,6 @@
 
 # Object files
 *.o
+
+#Specific UEFI Bootable File
+bootx64.efi
