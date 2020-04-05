@@ -17,5 +17,6 @@ The bash script will provide the latest instructions when run without any argume
 Some experimental features are uploaded as commented out instructions and there is no real error handling.
 
 Flat assembler (FASM) was created and is maintained by Tomasz Grysztar.
-It has it's own license included within the fasm directory
+It has it's own license included within the fasm directory.
+
 Learn more about FASM here: https://flatassembler.net/
