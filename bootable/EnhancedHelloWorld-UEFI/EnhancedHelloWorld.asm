@@ -66,6 +66,10 @@ section '.data' data readable writeable
 section '.bss' data readable writeable
 _TestStorageVariable2	UINTN
 
+;---------------;
+;Relocation Data;
+;---------------;
+section '.reloc' fixups data discardable
 
 ;End of File
 
