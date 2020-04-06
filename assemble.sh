@@ -41,6 +41,10 @@ do
     	mv "./$PROJECT_DIRECTORY/$filename.efi" "./$PROJECT_DIRECTORY/bin/$filename.efi"
 		if [[ ! -z "$3" && "$3" -ne "0" ]]; then
 			cp "./$PROJECT_DIRECTORY/bin/$filename.efi" "./bootx64.efi"
+			sudo mount /dev/nvme0n1p7 mountTemp
+			sudo cp bootx64.efi ./mountTemp/bootx64.efi
+			sudo umount /dev/nvme0n1p7 mountTemp
+			sudo qemu-system-x86_64 -cpu qemu64 -bios /usr/share/ovmf/OVMF.fd -m 1024 -net none -hda /dev/nvme0n1p7
 		fi
 	fi
 done

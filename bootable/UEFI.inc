@@ -86,6 +86,34 @@
 ;Native Byte Count
 	NATIVE_BYTE_COUNT	=	8
 
+;EFI Simple Text Output Attributes
+	EFI_BLACK					=	0x00
+	EFI_BLUE					=	0x01
+	EFI_GREEN					=	0x02
+	EFI_CYAN					=	0x03
+	EFI_RED						=	0x04
+	EFI_MAGENTA					=	0x05
+	EFI_BROWN					=	0x06
+	EFI_LIGHTGRAY				=	0x07
+	EFI_BRIGHT					=	0x08
+	EFI_DARKGRAY				=	EFI_BRIGHT or EFI_BLACK
+	EFI_LIGHTBLUE				=	0x09
+	EFI_LIGHTGREEN				=	0x0A
+	EFI_LIGHTCYAN				=	0x0B
+	EFI_LIGHTRED				=	0x0C
+	EFI_LIGHTMAGENTA			=	0x0D
+	EFI_YELLOW					=	0x0E
+	EFI_WHITE					=	0x0F
+
+	EFI_BACKGROUND_BLACK		=	0x00
+	EFI_BACKGROUND_BLUE			=	0x10
+	EFI_BACKGROUND_GREEN		=	0x20
+	EFI_BACKGROUND_CYAN			=	0x30
+	EFI_BACKGROUND_RED			=	0x40
+	EFI_BACKGROUND_MAGENTA		=	0x50
+	EFI_BACKGROUND_BROWN		=	0x60
+	EFI_BACKGROUND_LIGHTGRAY	=	0x70
+
 ;------------------;
 ;Symbolic Constants;
 ;------------------;
@@ -332,7 +360,7 @@ TemporaryStackPointer:	UINTN		;Used for calling Functions
 ;------;
 ;Macros;
 ;------;
-;section '.text' code executable readable	;No Code Yet
+;section '.text' code executable readable	;No Code Yet (or ever...)
 
 macro ExitSuccessfullyUEFI {
 	mov rax, EFI_SUCCESS
@@ -363,6 +391,7 @@ macro InitializeUEFI {
 	;Move register values into data locations
 	mov [ImageHandle], rcx
 	mov [SystemTablePtr], rdx
+	and	esp, 0FFFFFFF0h ;Stack alignment for some reason
 	;Need to save other important UEFI variables here including stack pointer...?
 	;Do some basic checking on system Table Here
 	;Start initializing other UEFI Services here potentially
@@ -374,10 +403,10 @@ macro InitializeUEFI {
 ;Runs on General Registers Only for right now
 ;Does not currently account for return values possibly needed in arguments, arg5+
 ;Reminder, push accepts arguments from memory or registers
-macro CallFunction function*,arg1,arg2,arg3,arg4,argE { ;[argE] {
+macro CallFunction function*,arg1,arg2,arg3,arg4,[argE] {
 common
 	;Save Volatile Register State (Might be able to simplfy later (instruction or macro or understanding))
-	;Need to Work on logic too
+	;Need to Work on logic too..maybe make sure values are saved by highest caller
 ;	push	rax
 ;	push	rcx
 ;	push	rdx
@@ -398,17 +427,19 @@ end if
 if ~ arg4 eq
 	mov		r9,arg4
 end if
-	;Save Stack Pointer
-	mov	[TemporaryStackPointer],rsp
-	and	esp, 0FFFFFFF0h ;Stack alignment for some reason
 if ~ argE eq
 reverse		;Push arguments in argE list in reverse order onto the stack
+	mov		[TemporaryStackPointer],rsp ;Save Stack Pointer
 	push	argE
 end if
 common
-	sub	rsp, NATIVE_BYTE_COUNT*4	;Reserve "shadow space" for parameters passed by register
-    call function	;rbx should be used for this...?
-	mov rsp,[TemporaryStackPointer]
+	sub		rsp, NATIVE_BYTE_COUNT*4	;Reserve "shadow space" for parameters passed by register
+    call	function	;rbx should be used for this...?
+if ~ argE eq
+	mov		rsp,[TemporaryStackPointer]
+else
+	add		rsp, NATIVE_BYTE_COUNT*4	;Undo "shadow space" for parameters passed by register
+end if
 	pop		r11
 	pop		r10
 }
@@ -427,6 +458,14 @@ common
 	mov rbx,[ConOutPtr]
 	mov rbx,[rbx + EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL.#function]
 	CallFunction rbx, [ConOutPtr], data
+}
+
+VirtualStructure _SIMPLE_TEXT_OUTPUT_MODE, SIMPLE_TEXT_OUTPUT_MODE
+
+macro SimpleTextOutputGetMaxMode { ;Return's the MaxMode in rax
+	mov rbx,[ConOutPtr]
+	mov	rbx,[rbx + EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL.ModePtr]
+	mov eax,[rbx + SIMPLE_TEXT_OUTPUT_MODE.MaxMode]
 }
 
 ;--------------------------;

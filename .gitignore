@@ -7,3 +7,6 @@
 
 #Specific UEFI Bootable File
 bootx64.efi
+
+#Temp Mount Folder
+mountTemp
