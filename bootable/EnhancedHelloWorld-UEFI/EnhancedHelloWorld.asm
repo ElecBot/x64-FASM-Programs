@@ -14,6 +14,12 @@ entry start		;Label name of the entry point
 ;-----------------;
 include '../UEFI.inc'	;Include UEFI FASM assembly library
 
+;-------------------;
+;Numerical Constants;
+;-------------------;
+FALSE	= 0
+TRUE	= 1
+
 ;----------------;
 ;Symbol Constants;
 ;----------------;
@@ -23,10 +29,10 @@ SNL equ 10,13	;String New Line Characters
 ;Helper Structures;
 ;-----------------;
 struc CHAR16string [characters] {	;String Helper Struct
-common	;Common label name for all characters / One-line array
-	. du characters
+common								;Common label name for all characters / One-line array
+	. CHAR16 characters
 	.termination du 0
-	.size = $ - .	;Needs db/dw or something...?
+	.size = $ - .					;Needs db/dw or something...?
 }
 
 ;---------;
@@ -34,10 +40,13 @@ common	;Common label name for all characters / One-line array
 ;---------;
 section '.text' code executable readable	;read-only executable code
 
-start:	;Entry Point Label
+start:		;Entry Point Label
 	InitializeUEFI					;No Error Handling Yet
-	InitializeConOut
-	ConOutOutputString _helloWorldStr
+	
+printStr:	;Print String Label
+	SimpleTextOutputInitialize
+	SimpleTextOutputFunction Reset, FALSE
+	SimpleTextOutputFunction OutputString, _helloWorldStr
 
 initLoop:
 	mov	rax, 0x1000000000 ;Move a value
@@ -51,7 +60,6 @@ limitLoop:
 ;Read-only Initialized Data;
 ;--------------------------;
 section '.rdata' data readable
-
 _helloWorldStr	CHAR16string 'Hello World',SNL,'Extra Line'
 
 ;---------------------------;
@@ -64,7 +72,7 @@ section '.data' data readable writeable
 ;Read/Write Uninitialized Data;
 ;-----------------------------;
 section '.bss' data readable writeable
-_TestStorageVariable2	UINTN
+;_TestStorageVariable2	UINTN
 
 ;---------------;
 ;Relocation Data;

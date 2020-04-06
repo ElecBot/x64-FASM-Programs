@@ -16,6 +16,7 @@
 	EFI_IMAGE_MACHINE_x64	=	0x8664
 
 ;EFI System Table
+;Little Endian Ordering...
 	EFI_SYSTEM_TABLE_SIGNATURE		=	0x5453595320494249
 	EFI_2_80_SYSTEM_TABLE_REVISION	=	(2 shl 16) or 80	;NEEDs Checking
 	;ADD More Revisions Here
@@ -126,7 +127,7 @@
 ;----------;
 ;Might Need to Add Alignment Values In Future
 
-struc EFI_TABLE_HEADER {
+struc _EFI_TABLE_HEADER {
 	.Signature    	UINT64
 	.Revision     	UINT32
 	.HeaderSize   	UINT32
@@ -134,11 +135,11 @@ struc EFI_TABLE_HEADER {
 	.Reserved     	UINT32
 }
 
-struc EFI_SYSTEM_TABLE {
-	.Hdr					EFI_TABLE_HEADER
+struc _EFI_SYSTEM_TABLE {
+	.Hdr					_EFI_TABLE_HEADER
 	.FirmwareVendorPtr		POINTER			;CHAR16
 	.FirmwareRevision		UINT32
-align	EIGHT_BYTE_BOUNDARY		;Necessary For Some Undetermined Reason
+align	EIGHT_BYTE_BOUNDARY					;Necessary For Some Undetermined Reason
 	.ConsoleInHandle		EFI_HANDLE
 	.ConInPtr				POINTER			;EFI_SIMPLE_TEXT_INPUT_PROTOCOL
 	.ConsoleOutHandle		EFI_HANDLE
@@ -151,8 +152,8 @@ align	EIGHT_BYTE_BOUNDARY		;Necessary For Some Undetermined Reason
 	.ConfigurationTablePtr	POINTER			;EFI_CONFIGURATION_TABLE
 }
 
-struc EFI_BOOT_SERVICES {
-	.Hdr				EFI_TABLE_HEADER
+struc _EFI_BOOT_SERVICES {
+	.Hdr				_EFI_TABLE_HEADER
 ;Task Priority Services
 	.RaiseTPL			FUNCTION		;EFI_RAISE_TPL
 	.RestoreTPL			FUNCTION		;EFI_RESTORE_TPL
@@ -211,7 +212,7 @@ struc EFI_BOOT_SERVICES {
 }
 
 
-struc EFI_RUNTIME_SERVICES {
+struc _EFI_RUNTIME_SERVICES {
 	.Hdr					EFI_TABLE_HEADER
 ;Time Services
 	.GetTime				FUNCTION		;EFI_GET_TIME
@@ -236,25 +237,40 @@ struc EFI_RUNTIME_SERVICES {
 }
 
 ;Expand the following Information More
-struc EFI_CONFIGURATION_TABLE {
+struc _EFI_CONFIGURATION_TABLE {
 	.VendorGuid			EFI_GUID
 	.VendorTablePtr		POINTER		;Void
 }
 
-struc EFI_PROPERTIES_TABLE {
+struc _EFI_PROPERTIES_TABLE {
 	.Version						UINT32
 	.Length							UINT32
 	.MemoryProtectionAttribute		UINT64
 }
 
-struc EFI_MEMORY_ATTRIBUTES_TABLE {
+struc _EFI_MEMORY_ATTRIBUTES_TABLE {
 	.Version			UINT32
 	.NumberOfEntries	UINT32
 	.DescriptorSize		UINT32
 	.Reserved			UINT32
 }
 
-struc EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL {
+struc _EFI_SIMPLE_TEXT_INPUT_PROTOCOL {
+	.Reset				FUNCTION	;EFI_INPUT_RESET
+	.ReadKeyStroke		FUNCTION	;EFI_INPUT_READ_KEY
+	.WaitForKey			FUNCTION	;EFI_EVENT
+}
+
+struc _EFI_SIMPLE_TEXT_INPUT_EX_PROTOCOL {
+	.Reset					FUNCTION	;EFI_INPUT_RESET_EX
+	.ReadKeyStrokeEx		FUNCTION	;EFI_INPUT_READ_KEY_EX
+	.WaitForKeyEx			FUNCTION	;EFI_EVENT
+	.SetState				FUNCTION	;EFI_SET_STATE
+	.RegisterKeyNotify		FUNCTION	;EFI_REGISTER_KEYSTROKE_NOTIFY
+	.UnregisterKeyNotify	FUNCTION	;EFI_UNREGISTER_KEYSTROKE_NOTIFY
+}
+
+struc _EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL {
 	.Reset				FUNCTION	;EFI_TEXT_RESET
 	.OutputString		FUNCTION	;EFI_TEXT_STRING
 	.TestString			FUNCTION	;EFI_TEST_STRING
@@ -267,7 +283,7 @@ struc EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL {
 	.ModePtr			POINTER		;SIMPLE_TEXT_OUTPUT_MODE
 }
 
-struc SIMPLE_TEXT_OUTPUT_MODE {
+struc _SIMPLE_TEXT_OUTPUT_MODE {
 	.MaxMode		INT32
 ;Current Settings
 	.Mode			INT32
@@ -283,10 +299,10 @@ struc SIMPLE_TEXT_OUTPUT_MODE {
 ;Read/Write Uninitialized Data Used With Macros (and Future Code)
 section '.bss' data readable writeable
 
-_ImageHandle:		EFI_HANDLE
-_SystemTablePtr:	POINTER		;EFI_SYSTEM_TABLE
-_ConOutPtr:			POINTER		;EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL
-_rspTemp:			UINTN		;Used for calling Functions
+ImageHandle:			EFI_HANDLE
+SystemTablePtr:			POINTER		;EFI_SYSTEM_TABLE
+ConOutPtr:				POINTER		;EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL
+TemporaryStackPointer:	UINTN		;Used for calling Functions
 
 ;-------------------------------------;
 ;Reference Function Calling Convention;
@@ -335,7 +351,7 @@ macro VirtualStructure struct,name {
 	end virtual
 }
 
-VirtualStructure EFI_SYSTEM_TABLE, SystemTable
+VirtualStructure _EFI_SYSTEM_TABLE, EFI_SYSTEM_TABLE
 
 ;Helper UEFI initialization macro that should be called at the beginning of a UEFI application
 ;Must be called before using any other library macros and function code and before rcx,rdx,rsp change
@@ -345,8 +361,8 @@ VirtualStructure EFI_SYSTEM_TABLE, SystemTable
 ;rsp = return address (stack pointer register)
 macro InitializeUEFI {
 	;Move register values into data locations
-	mov [_ImageHandle], rcx
-	mov [_SystemTablePtr], rdx
+	mov [ImageHandle], rcx
+	mov [SystemTablePtr], rdx
 	;Need to save other important UEFI variables here including stack pointer...?
 	;Do some basic checking on system Table Here
 	;Start initializing other UEFI Services here potentially
@@ -383,7 +399,7 @@ if ~ arg4 eq
 	mov		r9,arg4
 end if
 	;Save Stack Pointer
-	mov	[_rspTemp],rsp
+	mov	[TemporaryStackPointer],rsp
 	and	esp, 0FFFFFFF0h ;Stack alignment for some reason
 if ~ argE eq
 reverse		;Push arguments in argE list in reverse order onto the stack
@@ -392,25 +408,44 @@ end if
 common
 	sub	rsp, NATIVE_BYTE_COUNT*4	;Reserve "shadow space" for parameters passed by register
     call function	;rbx should be used for this...?
-	mov rsp,[_rspTemp]
+	mov rsp,[TemporaryStackPointer]
 	pop		r11
 	pop		r10
 }
 
-VirtualStructure EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL, ConOut
+VirtualStructure _EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL, EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL
 
-macro InitializeConOut {
+macro SimpleTextOutputInitialize {
 ;Use effective addressing to set the ConOutPtr memory
-	mov rbx,[_SystemTablePtr]
-	mov	rbx,[rbx + SystemTable.ConOutPtr]
-	mov [_ConOutPtr],rbx
+	mov rbx,[SystemTablePtr]
+	mov	rbx,[rbx + EFI_SYSTEM_TABLE.ConOutPtr]
+	mov [ConOutPtr],rbx
 }
 
-macro ConOutOutputString string {
-	mov rbx,[_ConOutPtr]
-	mov rbx,[rbx + ConOut.OutputString]		;Set Function in Register
-	CallFunction rbx, [_ConOutPtr], string
+macro SimpleTextOutputFunction function*, [data] { ;Set Function in Register
+common
+	mov rbx,[ConOutPtr]
+	mov rbx,[rbx + EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL.#function]
+	CallFunction rbx, [ConOutPtr], data
 }
 
-;End of File
+;--------------------------;
+;Symbolic Constants (Cont.);
+;--------------------------;
+;UEFI Data Type Definition Override for use in programs
+	BOOLEAN		equ		db		;0=FALSE, 1=TRUE, Other=Undefined
+	INT8		equ		db
+	UINT8		equ		db
+	INT16		equ		dw
+	UINT16		equ		dw
+	INT32		equ		dd
+	UINT32		equ		dd
+	INT64		equ		dq
+	UINT64		equ		dq
+	INT128		equ		dq		;Must have 2 values per data type
+	UINT128		equ		dq		;Must have 2 values per data type
+	CHAR8		equ		db
+	CHAR16		equ		du
+	INTN		equ		INT64	;Native Width Value Valid Only for 64-bit
+	UINTN		equ		UINT64	;Native Width Value Valid Only for 64-bit
 
