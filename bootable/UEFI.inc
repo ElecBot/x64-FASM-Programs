@@ -114,6 +114,19 @@
 	EFI_BACKGROUND_BROWN		=	0x60
 	EFI_BACKGROUND_LIGHTGRAY	=	0x70
 
+;Event Types
+	EVT_TIMER							=	0x80000000
+	EVT_RUNTIME							=	0x40000000
+	EVT_NOTIFY_WAIT						=	0x00000100
+	EVT_NOTIFY_SIGNAL					=	0x00000200
+	EVT_SIGNAL_EXIT_BOOT_SERVICES		=	0x00000201
+	EVT_SIGNAL_VIRTUAL_ADDRESS_CHANGE	=	0x60000202
+
+;EFI_TIMER_DELAY
+	TimerCancel		=	0
+	TimerPeriodic	=	1
+	TimerRelative	=	2
+
 ;------------------;
 ;Symbolic Constants;
 ;------------------;
@@ -133,13 +146,13 @@
 	CHAR16		equ		rw 1
 	INTN		equ		INT64	;Native Width Value Valid Only for 64-bit
 	UINTN		equ		UINT64	;Native Width Value Valid Only for 64-bit
-	;VOID						;Undeclared Type
 	POINTER		equ		UINTN	;Pointer, valid when UINTN is valid
-	FUNCTION	equ		POINTER	;Function,
+	FUNCTION	equ		POINTER	;Function, is simply a pointer to the function
+	VOID_PTR	equ		POINTER	;Pointer to Any (Undefined) Type
 	EFI_GUID	equ		rq 2	;Unique Identifier Value, needs alignment on 64-bit/8-byte boundary
 	EFI_STATUS	equ		UINTN	;Status Code
-	EFI_HANDLE	equ		POINTER	;Collection of related interfaces
-	EFI_EVENT	equ		POINTER	;Handle to an event structure
+	EFI_HANDLE	equ		VOID_PTR;Collection of related interfaces
+	EFI_EVENT	equ		VOID_PTR;Handle to an event structure
 	EFI_LBA		equ		UINT64	;Logical Block Address
 	EFI_TPL		equ		UINTN	;Task Priority Level
 
@@ -241,7 +254,7 @@ struc _EFI_BOOT_SERVICES {
 
 
 struc _EFI_RUNTIME_SERVICES {
-	.Hdr					EFI_TABLE_HEADER
+	.Hdr					_EFI_TABLE_HEADER
 ;Time Services
 	.GetTime				FUNCTION		;EFI_GET_TIME
 	.SetTime				FUNCTION		;EFI_SET_TIME
@@ -286,13 +299,18 @@ struc _EFI_MEMORY_ATTRIBUTES_TABLE {
 struc _EFI_SIMPLE_TEXT_INPUT_PROTOCOL {
 	.Reset				FUNCTION	;EFI_INPUT_RESET
 	.ReadKeyStroke		FUNCTION	;EFI_INPUT_READ_KEY
-	.WaitForKey			FUNCTION	;EFI_EVENT
+	.WaitForKey			EFI_EVENT
+}
+
+struc _EFI_INPUT_KEY {
+	.ScanCode			UINT16
+	.UnicodeChar			CHAR16
 }
 
 struc _EFI_SIMPLE_TEXT_INPUT_EX_PROTOCOL {
 	.Reset					FUNCTION	;EFI_INPUT_RESET_EX
 	.ReadKeyStrokeEx		FUNCTION	;EFI_INPUT_READ_KEY_EX
-	.WaitForKeyEx			FUNCTION	;EFI_EVENT
+	.WaitForKeyEx			EFI_EVENT
 	.SetState				FUNCTION	;EFI_SET_STATE
 	.RegisterKeyNotify		FUNCTION	;EFI_REGISTER_KEYSTROKE_NOTIFY
 	.UnregisterKeyNotify	FUNCTION	;EFI_UNREGISTER_KEYSTROKE_NOTIFY
@@ -329,8 +347,13 @@ section '.bss' data readable writeable
 
 ImageHandle:			EFI_HANDLE
 SystemTablePtr:			POINTER		;EFI_SYSTEM_TABLE
+ReturnAddressPtr:		POINTER
+BootServicesPtr:		POINTER		;EFI_BOOT_SERVICES
+RuntimeServicesPtr:		POINTER		;EFI_RUNTIME_SERVICES
+ConInPtr:				POINTER		;EFI_SIMPLE_TEXT_INPUT_PROTOCOL
 ConOutPtr:				POINTER		;EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL
-TemporaryStackPointer:	UINTN		;Used for calling Functions
+TemporaryStackPointer:	UINTN		;Used when calling Functions
+inputKey				_EFI_INPUT_KEY
 
 ;-------------------------------------;
 ;Reference Function Calling Convention;
@@ -342,7 +365,7 @@ TemporaryStackPointer:	UINTN		;Used for calling Functions
 	;rdx	or xmm1
 	;r8		or xmm2
 	;r9		or xmm3
-	;stack	(right-justified, 16-byte alignment) push 5th argument first
+	;stack	(right-justified, 16-byte alignment) push 5th argument last
 
 	;Return
 	;rax	as value only when data fits (typically status code)
@@ -364,11 +387,13 @@ TemporaryStackPointer:	UINTN		;Used for calling Functions
 
 macro ExitSuccessfullyUEFI {
 	mov rax, EFI_SUCCESS
+	mov rsp, [ReturnAddressPtr]
 	ret		;Return
 }
 
 macro ExitInvalidParameterUEFI {
 	mov rax, EFI_INVALID_PARAMETER
+	mov rsp, [ReturnAddressPtr]
 	ret		;Return
 }
 
@@ -391,7 +416,8 @@ macro InitializeUEFI {
 	;Move register values into data locations
 	mov [ImageHandle], rcx
 	mov [SystemTablePtr], rdx
-	and	esp, 0FFFFFFF0h ;Stack alignment for some reason
+	mov [ReturnAddressPtr], rsp
+	and	esp, 0FFFFFFF0h ;Stack alignment needed for some reason..needs checking
 	;Need to save other important UEFI variables here including stack pointer...?
 	;Do some basic checking on system Table Here
 	;Start initializing other UEFI Services here potentially
@@ -414,34 +440,90 @@ common
 ;	push	r9
 	push	r10
 	push	r11
-	;Put Arguments in corresponding registers if they exist
-if ~ arg1 eq
+	;Put Arguments in corresponding registers if they exist and are different
+if ~ arg1 eq & ~ arg1 eq rcx
 	mov		rcx,arg1
 end if
-if ~ arg2 eq
+if ~ arg2 eq & ~ arg2 eq rdx
 	mov		rdx,arg2
 end if
-if ~ arg3 eq
+if ~ arg3 eq & ~ arg3 eq r8
 	mov		r8,arg3
 end if
-if ~ arg4 eq
+if ~ arg4 eq & ~ arg4 eq r9
 	mov		r9,arg4
 end if
 if ~ argE eq
-reverse		;Push arguments in argE list in reverse order onto the stack
 	mov		[TemporaryStackPointer],rsp ;Save Stack Pointer
+reverse ;Push arguments in argE list in reverse order onto the stack
 	push	argE
 end if
 common
 	sub		rsp, NATIVE_BYTE_COUNT*4	;Reserve "shadow space" for parameters passed by register
     call	function	;rbx should be used for this...?
 if ~ argE eq
+;forward	
+	;pop		argE	;temp disable
+common
 	mov		rsp,[TemporaryStackPointer]
 else
 	add		rsp, NATIVE_BYTE_COUNT*4	;Undo "shadow space" for parameters passed by register
 end if
 	pop		r11
 	pop		r10
+}
+
+VirtualStructure _EFI_BOOT_SERVICES, EFI_BOOT_SERVICES
+
+macro BootServicesInitialize {
+	mov rbx,[SystemTablePtr]
+	mov	rbx,[rbx + EFI_SYSTEM_TABLE.BootServicesPtr]
+	mov [BootServicesPtr],rbx
+}
+
+macro BootServicesFunction function*, [data] { ;Set Function in Register
+common
+	mov rbx,[BootServicesPtr]
+	mov rbx,[rbx + EFI_BOOT_SERVICES.#function]
+	CallFunction rbx, data
+}
+
+VirtualStructure _EFI_RUNTIME_SERVICES, EFI_RUNTIME_SERVICES
+
+macro RuntimeServicesInitialize {
+	mov rbx,[SystemTablePtr]
+	mov	rbx,[rbx + EFI_SYSTEM_TABLE.RuntimeServicesPtr]
+	mov [RuntimeServicesPtr],rbx
+}
+
+macro RuntimeServicesFunction function*, [data] { ;Set Function in Register
+common
+	mov rbx,[RuntimeServicesPtr]
+	mov rbx,[rbx + EFI_RUNTIME_SERVICES.#function]
+	CallFunction rbx, data
+}
+
+VirtualStructure _EFI_SIMPLE_TEXT_INPUT_PROTOCOL, EFI_SIMPLE_TEXT_INPUT_PROTOCOL
+VirtualStructure _EFI_INPUT_KEY, EFI_INPUT_KEY
+	
+macro SimpleTextInputInitialize {
+	mov rbx,[SystemTablePtr]									
+	mov	rbx,[rbx + EFI_SYSTEM_TABLE.ConInPtr]
+	mov [ConInPtr],rbx
+}
+
+macro SimpleTextInputFunction function*, [data] { ;Set Function in Register
+common
+	mov rcx,[ConInPtr]
+	mov rbx,[rcx + EFI_SIMPLE_TEXT_INPUT_PROTOCOL.#function]
+	CallFunction rbx, rcx, data
+}
+
+macro SimpleTextInputWaitForKeyEvent indexPointer{
+	mov rdx,[ConInPtr]
+	;mov rdx,[rdx + EFI_SIMPLE_TEXT_INPUT_PROTOCOL.WaitForKey] ;Not Correct
+	add rdx,EFI_SIMPLE_TEXT_INPUT_PROTOCOL.WaitForKey		
+	BootServicesFunction WaitForEvent, 1, rdx, indexPointer
 }
 
 VirtualStructure _EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL, EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL
@@ -455,9 +537,9 @@ macro SimpleTextOutputInitialize {
 
 macro SimpleTextOutputFunction function*, [data] { ;Set Function in Register
 common
-	mov rbx,[ConOutPtr]
-	mov rbx,[rbx + EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL.#function]
-	CallFunction rbx, [ConOutPtr], data
+	mov rcx,[ConOutPtr]
+	mov rbx,[rcx + EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL.#function]
+	CallFunction rbx, rcx, data
 }
 
 VirtualStructure _SIMPLE_TEXT_OUTPUT_MODE, SIMPLE_TEXT_OUTPUT_MODE
@@ -471,7 +553,7 @@ macro SimpleTextOutputGetMaxMode { ;Return's the MaxMode in rax
 ;--------------------------;
 ;Symbolic Constants (Cont.);
 ;--------------------------;
-;UEFI Data Type Definition Override for use in programs
+;UEFI Data Type Definition Override for use in program data declerations
 	BOOLEAN		equ		db		;0=FALSE, 1=TRUE, Other=Undefined
 	INT8		equ		db
 	UINT8		equ		db

@@ -28,6 +28,8 @@ do
 	if [[ ! -z "$2" && "$2" -ne "0" ]]; then
 		./fasm/fasm.x64 "./$PROJECT_DIRECTORY/$filename.asm" -s "./$PROJECT_DIRECTORY/$filename.fas"
 		./fasm/tools/libc/bin/listing "./$PROJECT_DIRECTORY/$filename.fas" "./$PROJECT_DIRECTORY/bin/$filename.lst"
+		./fasm/tools/libc/bin/prepsrc "./$PROJECT_DIRECTORY/$filename.fas" "./$PROJECT_DIRECTORY/bin/$filename.pre"
+		./fasm/tools/libc/bin/symbols "./$PROJECT_DIRECTORY/$filename.fas" "./$PROJECT_DIRECTORY/bin/$filename.sym"
 		mv "./$PROJECT_DIRECTORY/$filename.fas" "./$PROJECT_DIRECTORY/bin/$filename.fas"
 	else
 		./fasm/fasm.x64 "./$PROJECT_DIRECTORY/$filename.asm"

@@ -1,6 +1,8 @@
 # Assembly Debug Files
 *.fas
 *.lst
+*.pre
+*.sym
 
 # Object files
 *.o

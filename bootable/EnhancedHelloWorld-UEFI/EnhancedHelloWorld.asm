@@ -17,6 +17,7 @@ include '../UEFI.inc'	;Include UEFI FASM assembly library
 ;-------------------;
 ;Numerical Constants;
 ;-------------------;
+NULL			= 0
 FALSE			= 0
 TRUE			= 1
 BITS_IN_HEX		= 4
@@ -31,17 +32,23 @@ SNL equ 10,13	;String New Line Characters
 ;-----------------;
 struc CHAR16string [characters] {	;String Helper Struct
 common								;Common label name for all characters / One-line array
+	.newLine CHAR16	SNL
 	. CHAR16 characters
 	.termination du 0
-	.size = $ - .					;Needs db/dw or something...?
+	;.size = $ - .					;Needs db/dw or something...? Not Used Right Now
 }
 
 ;--------------------------;
 ;Read-only Initialized Data;
 ;--------------------------;
 section '.rdata' data readable
-_helloWorldStr	CHAR16string 'Hello World',SNL,'Max Mode: '
-_stackPointerStr	CHAR16string SNL,'Stack Pointer: '
+_newLineStr			CHAR16			SNL,0
+_statusCodeStr		CHAR16string	'Status Code: '
+_helloWorldStr		CHAR16string	'Hello World!'
+_stackPointerStr	CHAR16string	'Stack Pointer: '
+_textOutputMaxMode	CHAR16string	'Max Mode: '
+_enterContinueStr	CHAR16string	'Press enter to continue...'
+_keyPressedStr		CHAR16string	'Key Pressed: '
 
 ;---------------------------;
 ;Read/Write Initialized Data;
@@ -49,10 +56,15 @@ _stackPointerStr	CHAR16string SNL,'Stack Pointer: '
 section '.data' data readable writeable
 _hexStrBuf CHAR16 '0x0000000000000000',0	;Allocate max number of characters needed for UINT64
 
+_waitEventIndex UINTN 0
+
 ;-----------------------------;
 ;Read/Write Uninitialized Data;
 ;-----------------------------;
 section '.bss' data readable writeable
+events:
+_timerEvent		EFI_EVENT
+_keyEvent		EFI_EVENT
 
 ;---------------;
 ;Relocation Data;
@@ -134,41 +146,81 @@ end if
 	OutputString _hexStrBuf, callVersion
 }
 
+macro OutputStatus {
+	OutputString _statusCodeStr.newLine, 1
+	OutputNumber rax,8,1
+}
+
 ;=========;
 ;Main Code;
 ;=========;
-start:		;Entry Point Label
+start:						;Entry Point Label
 	mov r10,rsp				;Move First Stack Pointer Value into r10
 	InitializeUEFI			;No Error Handling Yet
-
-	mov r11,rsp				;Move Second Stack Pointer Value into r11, should match r10
+	mov r11,rsp				;Move Second Stack Pointer Value into r11, to compare the offset alignment of the sp in r10
 	
-	;Go Through the Simple Text Output Protocol Functions
+	;Initialize other elements of the UEFI FASM library
+	BootServicesInitialize
+	RuntimeServicesInitialize
+	SimpleTextInputInitialize
 	SimpleTextOutputInitialize
+	
+	;Reset Text Output
 	SimpleTextOutputFunction Reset, TRUE
 	SimpleTextOutputFunction SetAttribute, EFI_WHITE or EFI_BACKGROUND_BLACK
 	SimpleTextOutputFunction ClearScreen
 	SimpleTextOutputFunction EnableCursor, FALSE
-
-	OutputString _helloWorldStr
-	SimpleTextOutputGetMaxMode
-	OutputNumber rax,8,1
 	
-	mov		r12, _stackPointerStr
+	;Display the one and only Hello World String
+	OutputString _helloWorldStr,1
+
+	;Display the original stack pointer value
+	mov		r12, _stackPointerStr.newLine
 	OutputString r12,1
 	OutputNumber r10,8,1
+	;Display the new baseline stack pointer value
 	OutputString r12,1
 	OutputNumber r11,8,1
-	OutputString r12,1
-	OutputNumber rsp,8,s
 
-initLoop:
-	mov	rax, 0x1000000000 ;Move a value
-limitLoop:
-	dec rax
-	jnz limitLoop
+	OutputString _textOutputMaxMode.newLine,1
+	SimpleTextOutputGetMaxMode
+	OutputNumber rax,2,1
+	
+	BootServicesFunction SetWatchdogTimer, 0, 0x10000, 0, 0	;Should disable watchdog timer...
+
+	BootServicesFunction CreateEvent, EVT_TIMER, 0,0,0, _timerEvent
+
+	;Set a timer event for 2 seconds from now
+	BootServicesFunction SetTimer, [_timerEvent], TimerRelative, 20000000
+
+	BootServicesFunction WaitForEvent, 1, _timerEvent, _waitEventIndex
+
+	BootServicesFunction CheckEvent, _timerEvent
+	OutputStatus
+
+	;Temporary Time Loop	;Not Needed anymore since timer events working
+;initLoop:
+	;mov	r10, 0x10000000 ;Move a value
+;jmpTimeLoop:
+	;dec r10
+	;jnz jmpTimeLoop
+	
+	OutputString _enterContinueStr.newLine,1		;Display the press enter to continue string
+	SimpleTextInputFunction Reset, TRUE
+
+	SimpleTextInputWaitForKeyEvent _waitEventIndex
+
+@@:	SimpleTextInputFunction ReadKeyStroke, inputKey
+	;cmp rax, EFI_SUCCESS	;Not needed since wait for key event working
+	;jne @b
+	OutputString _keyPressedStr.newLine,1
+	mov ax, [inputKey.ScanCode]
+	OutputNumber rax,2,1
+	;SimpleTextInputWaitForKeyEvent _waitEventIndex
+
+	OutputString _newLineStr,1
+
 
 	ExitSuccessfullyUEFI
 
-;End of File
 
