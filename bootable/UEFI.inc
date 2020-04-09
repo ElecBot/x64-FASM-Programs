@@ -304,7 +304,7 @@ struc _EFI_SIMPLE_TEXT_INPUT_PROTOCOL {
 
 struc _EFI_INPUT_KEY {
 	.ScanCode			UINT16
-	.UnicodeChar			CHAR16
+	.UnicodeChar		CHAR16
 }
 
 struc _EFI_SIMPLE_TEXT_INPUT_EX_PROTOCOL {
@@ -353,8 +353,7 @@ RuntimeServicesPtr:		POINTER		;EFI_RUNTIME_SERVICES
 ConInPtr:				POINTER		;EFI_SIMPLE_TEXT_INPUT_PROTOCOL
 ConOutPtr:				POINTER		;EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL
 TemporaryStackPointer:	UINTN		;Used when calling Functions
-inputKey				_EFI_INPUT_KEY
-
+InputKey			_EFI_INPUT_KEY	;Used as an output data structure for getting key input
 ;-------------------------------------;
 ;Reference Function Calling Convention;
 ;-------------------------------------;
@@ -417,7 +416,7 @@ macro InitializeUEFI {
 	mov [ImageHandle], rcx
 	mov [SystemTablePtr], rdx
 	mov [ReturnAddressPtr], rsp
-	and	esp, 0FFFFFFF0h ;Stack alignment needed for some reason..needs checking
+	and	rsp, (not 0xF) ;16-Byte stack alignment...needs double checking and understanding
 	;Need to save other important UEFI variables here including stack pointer...?
 	;Do some basic checking on system Table Here
 	;Start initializing other UEFI Services here potentially
@@ -519,6 +518,22 @@ common
 	CallFunction rbx, rcx, data
 }
 
+;At exit of macro, rax is same status, bx is scan code, cx is unicodeCharReg, unless overriden
+;Overriden expects 2 registers of at least 2-bytes or 1 register of at least 4-bytes...future work
+macro SimpleTextInputReadKey scanCodeReg, unicodeCharReg {
+	SimpleTextInputFunction ReadKeyStroke, InputKey
+if scanCodeReg eq
+	mov bx, [InputKey.ScanCode]
+else
+	mov scanCodeReg, [InputKey.ScanCode]
+end if	
+if unicodeCharReg eq
+	mov cx, [InputKey.UnicodeChar]
+else
+	mov unicodeCharReg, [InputKey.UnicodeChar]
+end if
+}
+
 macro SimpleTextInputWaitForKeyEvent indexPointer{
 	mov rdx,[ConInPtr]
 	;mov rdx,[rdx + EFI_SIMPLE_TEXT_INPUT_PROTOCOL.WaitForKey] ;Not Correct
@@ -544,10 +559,10 @@ common
 
 VirtualStructure _SIMPLE_TEXT_OUTPUT_MODE, SIMPLE_TEXT_OUTPUT_MODE
 
-macro SimpleTextOutputGetMaxMode { ;Return's the MaxMode in rax
+macro SimpleTextOutputMode name { ;Return's the MaxMode in rax
 	mov rbx,[ConOutPtr]
 	mov	rbx,[rbx + EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL.ModePtr]
-	mov eax,[rbx + SIMPLE_TEXT_OUTPUT_MODE.MaxMode]
+	mov eax,[rbx + SIMPLE_TEXT_OUTPUT_MODE.#name]
 }
 
 ;--------------------------;
@@ -569,4 +584,6 @@ macro SimpleTextOutputGetMaxMode { ;Return's the MaxMode in rax
 	CHAR16		equ		du
 	INTN		equ		INT64	;Native Width Value Valid Only for 64-bit
 	UINTN		equ		UINT64	;Native Width Value Valid Only for 64-bit
+
+
 
