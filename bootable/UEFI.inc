@@ -1,35 +1,61 @@
-;UEFI FASM Library based on the 2.8 version specification: https://uefi.org/specifications
-;Version 1
-;Updated April 3nd 2020
+;=================;
+;UEFI FASM Library;
+;=================;
+;Based on the Unified Extensible Firmware Interface (UEFI) 2.8 version specification
+;	https://uefi.org/specifications
+;Relies on features supported in at least Flat Assembler (FASM) 1.73.22
+;	https://flatassembler.net
+;Targets x64 Platforms: Supports Assembly-Based UEFI Programs
+;A Tab Width of 4 is optimal, no line should contain more than 100 characters
+;This text file is the entry point of the UEFI FASM library and should be included into projects.
+;	Common UEFI constants, structures, and macros are defined in this file.
+;	Supported included files extend the library capabilities into seperate sections.
+;Updated April 10th 2020
 
-;------------------------;
-;Pure Numerical Constants;
-;------------------------;
-;PE32+ Image Header Relevant UEFI Values
-	;Subsystem Type for EFI Images
+;--------------------------;
+;Common Numerical Constants;
+;--------------------------;
+;PE32+ Image (Executable File) Header Relevant UEFI Values
+;	Subsystem Type for EFI Images
 	EFI_IMAGE_SUBSYSTEM_EFI_APPLICATION			=	10
 	EFI_IMAGE_SUBSYSTEM_EFI_BOOT_SERVICE_DRIVER	=	11
 	EFI_IMAGE_SUBSYSTEM_EFI_RUNTIME_DRIVER		=	12
 
-	;Machine Type for EFI Images
-	EFI_IMAGE_MACHINE_IA32	=	0x014c ;Value Not Intended for Use Currently (Shown for Reference)
-	EFI_IMAGE_MACHINE_x64	=	0x8664
+;	Machine Type for EFI Images
+	EFI_IMAGE_MACHINE_IA32				=	0x014c
+	EFI_IMAGE_MACHINE_IA64				=	0x0200
+	EFI_IMAGE_MACHINE_EBC				=	0x0EBC
+	EFI_IMAGE_MACHINE_x64				=	0x8664	;Value Used in x64 Executable File Header
+	EFI_IMAGE_MACHINE_ARMTHUMB_MIXED	=	0x01C2
+	EFI_IMAGE_MACHINE_AARCH64			=	0xAA64
+	EFI_IMAGE_MACHINE_RISCV32			=	0x5032
+	EFI_IMAGE_MACHINE_RISCV64			=	0x5064
+	EFI_IMAGE_MACHINE_RISCV128			=	0x5128
+
+;Logical Boolean Values
+	FALSE	=	0
+	TRUE	=	1
+
+;Function Parameters
+	NULL	=	0
 
 ;EFI System Table
 ;Little Endian Ordering...
 	EFI_SYSTEM_TABLE_SIGNATURE		=	0x5453595320494249
-	EFI_2_80_SYSTEM_TABLE_REVISION	=	(2 shl 16) or 80	;NEEDs Checking
-	;ADD More Revisions Here
-	;EFI_SYSTEM_TABLE_REVISION		=	EFI_2_8_SYSTEM_TABLE_REVISION	;Not sure about this yet
-	;EFI_SPECIFICATION_VERSION		=	EFI_SYSTEM_TABLE_REVISION		;Works in FASM???
-
-;EFI Boot Services
-	EFI_BOOT_SERVICES_SIGNATURE		=	0x56524553544f4f42
-	;EFI_BOOT_SERVICES_REVISION		=	EFI_SPECIFICATION_VERSION
-
-;EFI Runtime Services
-	EFI_RUNTIME_SERVICES_SIGNATURE	=	0x56524553544e5552
-	;EFI_RUNTIME_SERVICES_REVISION	=	EFI_SPECIFICATION_VERSION
+	EFI_2_80_SYSTEM_TABLE_REVISION	=	(2 shl 16) or 80
+	EFI_2_70_SYSTEM_TABLE_REVISION	=	(2 shl 16) or 70
+	EFI_2_60_SYSTEM_TABLE_REVISION	=	(2 shl 16) or 60
+	EFI_2_50_SYSTEM_TABLE_REVISION	=	(2 shl 16) or 50
+	EFI_2_40_SYSTEM_TABLE_REVISION	=	(2 shl 16) or 40
+	EFI_2_31_SYSTEM_TABLE_REVISION	=	(2 shl 16) or 31
+	EFI_2_30_SYSTEM_TABLE_REVISION	=	(2 shl 16) or 30
+	EFI_2_20_SYSTEM_TABLE_REVISION	=	(2 shl 16) or 20
+	EFI_2_10_SYSTEM_TABLE_REVISION	=	(2 shl 16) or 10
+	EFI_2_00_SYSTEM_TABLE_REVISION	=	(2 shl 16) or 0
+	EFI_1_10_SYSTEM_TABLE_REVISION	=	(1 shl 16) or 10
+	EFI_1_02_SYSTEM_TABLE_REVISION	=	(1 shl 16) or 2
+	EFI_SYSTEM_TABLE_REVISION		=	EFI_2_80_SYSTEM_TABLE_REVISION	;Doesn't Match Standard
+	EFI_SPECIFICATION_VERSION		=	EFI_SYSTEM_TABLE_REVISION
 
 ;EFI Status Codes
 	EFI_SUCCESS				= 0
@@ -86,52 +112,12 @@
 ;Native Byte Count
 	NATIVE_BYTE_COUNT	=	8
 
-;EFI Simple Text Output Attributes
-	EFI_BLACK					=	0x00
-	EFI_BLUE					=	0x01
-	EFI_GREEN					=	0x02
-	EFI_CYAN					=	0x03
-	EFI_RED						=	0x04
-	EFI_MAGENTA					=	0x05
-	EFI_BROWN					=	0x06
-	EFI_LIGHTGRAY				=	0x07
-	EFI_BRIGHT					=	0x08
-	EFI_DARKGRAY				=	EFI_BRIGHT or EFI_BLACK
-	EFI_LIGHTBLUE				=	0x09
-	EFI_LIGHTGREEN				=	0x0A
-	EFI_LIGHTCYAN				=	0x0B
-	EFI_LIGHTRED				=	0x0C
-	EFI_LIGHTMAGENTA			=	0x0D
-	EFI_YELLOW					=	0x0E
-	EFI_WHITE					=	0x0F
-
-	EFI_BACKGROUND_BLACK		=	0x00
-	EFI_BACKGROUND_BLUE			=	0x10
-	EFI_BACKGROUND_GREEN		=	0x20
-	EFI_BACKGROUND_CYAN			=	0x30
-	EFI_BACKGROUND_RED			=	0x40
-	EFI_BACKGROUND_MAGENTA		=	0x50
-	EFI_BACKGROUND_BROWN		=	0x60
-	EFI_BACKGROUND_LIGHTGRAY	=	0x70
-
-;Event Types
-	EVT_TIMER							=	0x80000000
-	EVT_RUNTIME							=	0x40000000
-	EVT_NOTIFY_WAIT						=	0x00000100
-	EVT_NOTIFY_SIGNAL					=	0x00000200
-	EVT_SIGNAL_EXIT_BOOT_SERVICES		=	0x00000201
-	EVT_SIGNAL_VIRTUAL_ADDRESS_CHANGE	=	0x60000202
-
-;EFI_TIMER_DELAY
-	TimerCancel		=	0
-	TimerPeriodic	=	1
-	TimerRelative	=	2
-
-;------------------;
-;Symbolic Constants;
-;------------------;
-;UEFI Data Type Space Reservations
-	BOOLEAN		equ		rb 1	;0=FALSE, 1=TRUE, Other=Undefined
+;-------------------------;
+;Common Symbolic Constants;
+;-------------------------;
+;Common UEFI Data Types
+;	Structure Reservations
+	BOOLEAN		equ		rb 1	;Logical Boolean: 0=FALSE, 1=TRUE, Other=Undefined
 	INT8		equ		rb 1
 	UINT8		equ		rb 1
 	INT16		equ		rw 1
@@ -144,29 +130,29 @@
 	UINT128		equ		rq 2
 	CHAR8		equ		rb 1
 	CHAR16		equ		rw 1
-	INTN		equ		INT64	;Native Width Value Valid Only for 64-bit
-	UINTN		equ		UINT64	;Native Width Value Valid Only for 64-bit
-	POINTER		equ		UINTN	;Pointer, valid when UINTN is valid
-	FUNCTION	equ		POINTER	;Function, is simply a pointer to the function
-	VOID_PTR	equ		POINTER	;Pointer to Any (Undefined) Type
-	EFI_GUID	equ		rq 2	;Unique Identifier Value, needs alignment on 64-bit/8-byte boundary
-	EFI_STATUS	equ		UINTN	;Status Code
+	INTN		equ		INT64	;Native width value valid only for x64 target
+	UINTN		equ		UINT64	;Native width value valid only for x64 target
+	POINTER		equ		UINTN	;Pointer
+	FUNCTION	equ		POINTER	;Function, which is simply a pointer to the callable function
+	VOID_PTR	equ		POINTER	;Pointer to any / undefined type
+	EFI_GUID	equ		rq 2	;Unique Identifier Value, with alignment on 64-bit/8-byte boundary
+	EFI_STATUS	equ		UINTN	;Status code
 	EFI_HANDLE	equ		VOID_PTR;Collection of related interfaces
 	EFI_EVENT	equ		VOID_PTR;Handle to an event structure
 	EFI_LBA		equ		UINT64	;Logical Block Address
 	EFI_TPL		equ		UINTN	;Task Priority Level
 
-	EFI_MAC_ADDRESS		equ		rq 4	;Media Access Controll Address, 32-byte buffer
+;	Networking Related Reservations
+	EFI_MAC_ADDRESS		equ		rq 4	;Media Access Control Address, 32-byte buffer
 	EFI_IPv4_ADDRESS	equ		rd 1	;IPv4 internet protocol address, 4-byte buffer
 	EFI_IPv6_ADDRESS	equ		rq 2	;IPv6 internet protocol address, 16-byte buffer
-	EFI_IP_ADDRESS		equ		rq 2	;Either internet protocol address, 16-byte buffer aligned on 4-byte boundary
-	;Little Endian Ordering...
-	;Possibly More to be added later
+	EFI_IP_ADDRESS		equ		rq 2	;Either internet protocol address, 16-byte buffer
+										;	Aligned on 4-byte boundary
 
 ;----------;
 ;Structures;
 ;----------;
-;Might Need to Add Alignment Values In Future
+;Might Need to Add More Alignment Values In Future
 
 struc _EFI_TABLE_HEADER {
 	.Signature    	UINT64
@@ -180,7 +166,7 @@ struc _EFI_SYSTEM_TABLE {
 	.Hdr					_EFI_TABLE_HEADER
 	.FirmwareVendorPtr		POINTER			;CHAR16
 	.FirmwareRevision		UINT32
-align	EIGHT_BYTE_BOUNDARY					;Necessary For Some Undetermined Reason
+align EIGHT_BYTE_BOUNDARY					;Necessary For Some Slightly Confusing Reason
 	.ConsoleInHandle		EFI_HANDLE
 	.ConInPtr				POINTER			;EFI_SIMPLE_TEXT_INPUT_PROTOCOL
 	.ConsoleOutHandle		EFI_HANDLE
@@ -191,90 +177,6 @@ align	EIGHT_BYTE_BOUNDARY					;Necessary For Some Undetermined Reason
 	.BootServicesPtr		POINTER			;EFI_BOOT_SERVICES
 	.NumberOfTableEntries	UINTN
 	.ConfigurationTablePtr	POINTER			;EFI_CONFIGURATION_TABLE
-}
-
-struc _EFI_BOOT_SERVICES {
-	.Hdr				_EFI_TABLE_HEADER
-;Task Priority Services
-	.RaiseTPL			FUNCTION		;EFI_RAISE_TPL
-	.RestoreTPL			FUNCTION		;EFI_RESTORE_TPL
-;Memory Services
-	.AllocatePages		FUNCTION		;EFI_ALLOCATE_PAGES
-	.FreePages			FUNCTION		;EFI_FREE_PAGES
-	.GetMemoryMap		FUNCTION		;EFI_GET_MEMORY_MAP
-	.AllocatePool		FUNCTION		;EFI_ALLOCATE_POOL
-	.FreePool			FUNCTION		;EFI_FREE_POOL
-;Event & Timer Services
-	.CreateEvent		FUNCTION		;EFI_CREATE_EVENT
-	.SetTimer			FUNCTION		;EFI_SET_TIMER
-	.WaitForEvent		FUNCTION		;EFI_WAIT_FOR_EVENT
-	.SignalEvent		FUNCTION		;EFI_SIGNAL_EVENT
-	.CloseEvent			FUNCTION		;EFI_CLOSE_EVENT
-	.CheckEvent			FUNCTION		;EFI_CHECK_EVENT
-;Protocol Handler Services
-	.InstallProtocolInterface		FUNCTION	;EFI_INSTALL_PROTOCOL_INTERFACE
-	.ReinstallProtocolInterface		FUNCTION	;EFI_REINSTALL_PROTOCOL_INTERFACE
-	.UninstallProtocolInterface		FUNCTION	;EFI_UNINSTALL_PROTOCOL_INTERFACE
-	.HandleProtocol					FUNCTION	;EFI_HANDLE_PROTOCOL
-	.VoidPtr						POINTER		;Reserved
-	.RegisterProtocolNotify			FUNCTION	;EFI_REGISTER_PROTOCOL_NOTIFY
-	.LocateHandle					FUNCTION	;EFI_LOCATE_HANDLE
-	.LocateDevicePath				FUNCTION	;EFI_LOCATE_DEVICE_PATH
-	.InstallConfigurationTable		FUNCTION	;EFI_INSTALL_CONFIGURATION_TABLE
-;Image Services
-	.LoadImage			FUNCTION		;EFI_IMAGE_LOAD
-	.StartImage			FUNCTION		;EFI_IMAGE_START
-	.Exit				FUNCTION		;EFI_EXIT
-	.UnloadImage		FUNCTION		;EFI_IMAGE_UNLOAD
-	.ExitBootServices	FUNCTION		;EFI_EXIT_BOOT_SERVICES
-;Miscellaneous Services
-	.GetNextMonotonicCount		FUNCTION		;EFI_GET_NEXT_MONOTONIC_COUNT
-	.Stall						FUNCTION		;EFI_STALL
-	.SetWatchdogTimer			FUNCTION		;EFI_SET_WATCHDOG_TIMER
-;Driver Support Services
-	.ConnectController			FUNCTION		;EFI_CONNECT_CONTROLLER
-	.DisconnectController		FUNCTION		;EFI_DISCONNECT_CONTROLLER
-;Open and Close Protocol Services
-	.OpenProtocol				FUNCTION		;EFI_OPEN_PROTOCOL
-	.CloseProtocol				FUNCTION		;EFI_CLOSE_PROTOCOL
-	.OpenProtocolInformation	FUNCTION		;EFI_OPEN_PROTOCOL_INFORMATION
-;Library Services
-	.ProtocolsPerHandle						FUNCTION	;EFI_PROTOCOLS_PER_HANDLE
-	.LocateHandleBuffer						FUNCTION	;EFI_LOCATE_HANDLE_BUFFER
-	.LocateProtocol							FUNCTION	;EFI_LOCATE_PROTOCOL
-	.InstallMultipleProtocolInterfaces		FUNCTION	;EFI_INSTALL_MULTIPLE_PROTOCOL_INTERFACES
-	.UninstallMultipleProtocolInterfaces	FUNCTION	;EFI_UNINSTALL_MULTIPLE_PROTOCOL_INTERFACES
-;32-bit CRC Services
-	.CalculateCrc32		FUNCTION		;EFI_CALCULATE_CRC32
-;Miscellaneous Services (Cont.)
-	.CopyMem			FUNCTION		;EFI_COPY_MEM
-	.SetMem				FUNCTION		;EFI_SET_MEM
-	.CreateEventEx		FUNCTION		;EFI_CREATE_EVENT_EX
-}
-
-
-struc _EFI_RUNTIME_SERVICES {
-	.Hdr					_EFI_TABLE_HEADER
-;Time Services
-	.GetTime				FUNCTION		;EFI_GET_TIME
-	.SetTime				FUNCTION		;EFI_SET_TIME
-	.GetWakeupTime			FUNCTION		;EFI_GET_WAKEUP_TIME
-	.SetWakeupTime			FUNCTION		;EFI_SET_WAKEUP_TIME
-;Virtual Memory Services
-	.SetVirtualAddressMap	FUNCTION		;EFI_SET_VIRTUAL_ADDRESS_MAP
-	.ConverterPointer		POINTER			;EFI_CONVERT_POINTER (Function or Pointer?)
-;Variable Services
-	.GetVariable			FUNCTION		;EFI_GET_VARIABLE
-	.GetNextVariableName	FUNCTION		;EFI_GET_NEXT_VARIABLE_NAME
-	.SetVariable			FUNCTION		;EFI_SET_VARIABLE
-;Miscellaneous Services
-	.GetNextHighMonotonicCount		FUNCTION	;EFI_GET_NEXT_HIGH_MONO_COUNT
-	.ResetSystem					FUNCTION	;EFI_RESET_SYSTEM
-;UEFI 2.0 Capsule Services
-	.UpdateCapsule					FUNCTION	;EFI_UPDATE_CAPSULE
-	.QueryCapsuleCapabilities		FUNCTION	;EFI_QUERY_CAPSULE_CAPABILITIES
-;Miscellaneous UEFI 2.0 Service
-	.QueryVariableInfo		FUNCTION		;EFI_QUERY_VARIABLE_INFO
 }
 
 ;Expand the following Information More
@@ -296,49 +198,6 @@ struc _EFI_MEMORY_ATTRIBUTES_TABLE {
 	.Reserved			UINT32
 }
 
-struc _EFI_SIMPLE_TEXT_INPUT_PROTOCOL {
-	.Reset				FUNCTION	;EFI_INPUT_RESET
-	.ReadKeyStroke		FUNCTION	;EFI_INPUT_READ_KEY
-	.WaitForKey			EFI_EVENT
-}
-
-struc _EFI_INPUT_KEY {
-	.ScanCode			UINT16
-	.UnicodeChar		CHAR16
-}
-
-struc _EFI_SIMPLE_TEXT_INPUT_EX_PROTOCOL {
-	.Reset					FUNCTION	;EFI_INPUT_RESET_EX
-	.ReadKeyStrokeEx		FUNCTION	;EFI_INPUT_READ_KEY_EX
-	.WaitForKeyEx			EFI_EVENT
-	.SetState				FUNCTION	;EFI_SET_STATE
-	.RegisterKeyNotify		FUNCTION	;EFI_REGISTER_KEYSTROKE_NOTIFY
-	.UnregisterKeyNotify	FUNCTION	;EFI_UNREGISTER_KEYSTROKE_NOTIFY
-}
-
-struc _EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL {
-	.Reset				FUNCTION	;EFI_TEXT_RESET
-	.OutputString		FUNCTION	;EFI_TEXT_STRING
-	.TestString			FUNCTION	;EFI_TEST_STRING
-	.QueryMode			FUNCTION	;EFI_TEXT_QUERY_MODE
-	.SetMode			FUNCTION	;EFI_TEXT_SET_MODE
-	.SetAttribute		FUNCTION	;EFI_TEXT_SET_ATTRIBUTE
-	.ClearScreen		FUNCTION	;EFI_TEXT_CLEAR_SCREEN
-	.SetCursorPosition	FUNCTION	;EFI_TEXT_SET_CURSOR_POSITION
-	.EnableCursor		FUNCTION	;EFI_TEXT_ENABLE_CURSOR
-	.ModePtr			POINTER		;SIMPLE_TEXT_OUTPUT_MODE
-}
-
-struc _SIMPLE_TEXT_OUTPUT_MODE {
-	.MaxMode		INT32
-;Current Settings
-	.Mode			INT32
-	.Attribute		INT32
-	.CursorColumn	INT32
-	.CursorRow		INT32
-	.CursorVisible	BOOLEAN
-}
-
 ;----;
 ;Data;
 ;----;
@@ -348,12 +207,8 @@ section '.bss' data readable writeable
 ImageHandle:			EFI_HANDLE
 SystemTablePtr:			POINTER		;EFI_SYSTEM_TABLE
 ReturnAddressPtr:		POINTER
-BootServicesPtr:		POINTER		;EFI_BOOT_SERVICES
-RuntimeServicesPtr:		POINTER		;EFI_RUNTIME_SERVICES
-ConInPtr:				POINTER		;EFI_SIMPLE_TEXT_INPUT_PROTOCOL
-ConOutPtr:				POINTER		;EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL
 TemporaryStackPointer:	UINTN		;Used when calling Functions
-InputKey			_EFI_INPUT_KEY	;Used as an output data structure for getting key input
+
 ;-------------------------------------;
 ;Reference Function Calling Convention;
 ;-------------------------------------;
@@ -396,7 +251,8 @@ macro ExitInvalidParameterUEFI {
 	ret		;Return
 }
 
-;Virtual Structures So Offsets Can Be Used in Effective Addressing without making copies of UEFI data when not necessary
+;Virtual Structures So Offsets Can Be Used in Effective Addressing
+;	Does not make copies of UEFI data where not necessary
 macro VirtualStructure struct,name {
 	virtual at 0
 		name struct
@@ -406,7 +262,7 @@ macro VirtualStructure struct,name {
 VirtualStructure _EFI_SYSTEM_TABLE, EFI_SYSTEM_TABLE
 
 ;Helper UEFI initialization macro that should be called at the beginning of a UEFI application
-;Must be called before using any other library macros and function code and before rcx,rdx,rsp change
+;Must be called before using any other library macros and before rcx,rdx,rsp change
 ;UEFI Handoff State
 ;rcx = EFI_HANDLE - ImageHandle
 ;rdx = POINTER - EFI_SYSTEM_TABLE
@@ -430,7 +286,7 @@ macro InitializeUEFI {
 ;Reminder, push accepts arguments from memory or registers
 macro CallFunction function*,arg1,arg2,arg3,arg4,[argE] {
 common
-	;Save Volatile Register State (Might be able to simplfy later (instruction or macro or understanding))
+	;Save Volatile Register State...might be able to simplfy later
 	;Need to Work on logic too..maybe make sure values are saved by highest caller
 ;	push	rax
 ;	push	rcx
@@ -452,118 +308,49 @@ end if
 if ~ arg4 eq & ~ arg4 eq r9
 	mov		r9,arg4
 end if
-if ~ argE eq
 	mov		[TemporaryStackPointer],rsp ;Save Stack Pointer
-reverse ;Push arguments in argE list in reverse order onto the stack
-	push	argE
+	and	rsp, (not 0xF)
+if ~ argE eq
+	numberOfStackArguments = 0
+forward
+	numberOfStackArguments = numberOfStackArguments + 1
+common
+if numberOfStackArguments mod 2 = 1
+	push	rax
 end if
+reverse ;Push arguments in argE list in reverse order onto the stack
+	push	qword argE
+common
+end if
+	
 common
 	sub		rsp, NATIVE_BYTE_COUNT*4	;Reserve "shadow space" for parameters passed by register
     call	function	;rbx should be used for this...?
+	mov		rsp,[TemporaryStackPointer]
 if ~ argE eq
 ;forward	
 	;pop		argE	;temp disable
 common
-	mov		rsp,[TemporaryStackPointer]
+	
 else
-	add		rsp, NATIVE_BYTE_COUNT*4	;Undo "shadow space" for parameters passed by register
+	;add		rsp, NATIVE_BYTE_COUNT*4	;Undo "shadow space" for parameters passed by register
 end if
 	pop		r11
 	pop		r10
 }
 
-VirtualStructure _EFI_BOOT_SERVICES, EFI_BOOT_SERVICES
-
-macro BootServicesInitialize {
-	mov rbx,[SystemTablePtr]
-	mov	rbx,[rbx + EFI_SYSTEM_TABLE.BootServicesPtr]
-	mov [BootServicesPtr],rbx
-}
-
-macro BootServicesFunction function*, [data] { ;Set Function in Register
+macro enum [parameters] {
 common
-	mov rbx,[BootServicesPtr]
-	mov rbx,[rbx + EFI_BOOT_SERVICES.#function]
-	CallFunction rbx, data
+	local enumValue
+	enumValue = 0
+forward
+	parameters	=	enumValue
+	enumValue	=	enumValue + 1
 }
 
-VirtualStructure _EFI_RUNTIME_SERVICES, EFI_RUNTIME_SERVICES
-
-macro RuntimeServicesInitialize {
-	mov rbx,[SystemTablePtr]
-	mov	rbx,[rbx + EFI_SYSTEM_TABLE.RuntimeServicesPtr]
-	mov [RuntimeServicesPtr],rbx
-}
-
-macro RuntimeServicesFunction function*, [data] { ;Set Function in Register
-common
-	mov rbx,[RuntimeServicesPtr]
-	mov rbx,[rbx + EFI_RUNTIME_SERVICES.#function]
-	CallFunction rbx, data
-}
-
-VirtualStructure _EFI_SIMPLE_TEXT_INPUT_PROTOCOL, EFI_SIMPLE_TEXT_INPUT_PROTOCOL
-VirtualStructure _EFI_INPUT_KEY, EFI_INPUT_KEY
-	
-macro SimpleTextInputInitialize {
-	mov rbx,[SystemTablePtr]									
-	mov	rbx,[rbx + EFI_SYSTEM_TABLE.ConInPtr]
-	mov [ConInPtr],rbx
-}
-
-macro SimpleTextInputFunction function*, [data] { ;Set Function in Register
-common
-	mov rcx,[ConInPtr]
-	mov rbx,[rcx + EFI_SIMPLE_TEXT_INPUT_PROTOCOL.#function]
-	CallFunction rbx, rcx, data
-}
-
-;At exit of macro, rax is same status, bx is scan code, cx is unicodeCharReg, unless overriden
-;Overriden expects 2 registers of at least 2-bytes or 1 register of at least 4-bytes...future work
-macro SimpleTextInputReadKey scanCodeReg, unicodeCharReg {
-	SimpleTextInputFunction ReadKeyStroke, InputKey
-if scanCodeReg eq
-	mov bx, [InputKey.ScanCode]
-else
-	mov scanCodeReg, [InputKey.ScanCode]
-end if	
-if unicodeCharReg eq
-	mov cx, [InputKey.UnicodeChar]
-else
-	mov unicodeCharReg, [InputKey.UnicodeChar]
-end if
-}
-
-macro SimpleTextInputWaitForKeyEvent indexPointer{
-	mov rdx,[ConInPtr]
-	;mov rdx,[rdx + EFI_SIMPLE_TEXT_INPUT_PROTOCOL.WaitForKey] ;Not Correct
-	add rdx,EFI_SIMPLE_TEXT_INPUT_PROTOCOL.WaitForKey		
-	BootServicesFunction WaitForEvent, 1, rdx, indexPointer
-}
-
-VirtualStructure _EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL, EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL
-
-macro SimpleTextOutputInitialize {
-;Use effective addressing to set the ConOutPtr memory
-	mov rbx,[SystemTablePtr]
-	mov	rbx,[rbx + EFI_SYSTEM_TABLE.ConOutPtr]
-	mov [ConOutPtr],rbx
-}
-
-macro SimpleTextOutputFunction function*, [data] { ;Set Function in Register
-common
-	mov rcx,[ConOutPtr]
-	mov rbx,[rcx + EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL.#function]
-	CallFunction rbx, rcx, data
-}
-
-VirtualStructure _SIMPLE_TEXT_OUTPUT_MODE, SIMPLE_TEXT_OUTPUT_MODE
-
-macro SimpleTextOutputMode name { ;Return's the MaxMode in rax
-	mov rbx,[ConOutPtr]
-	mov	rbx,[rbx + EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL.ModePtr]
-	mov eax,[rbx + SIMPLE_TEXT_OUTPUT_MODE.#name]
-}
+include 'BootServices.inc'
+include 'RuntimeServices.inc'
+include 'ConsoleSupport.inc'
 
 ;--------------------------;
 ;Symbolic Constants (Cont.);
@@ -584,6 +371,4 @@ macro SimpleTextOutputMode name { ;Return's the MaxMode in rax
 	CHAR16		equ		du
 	INTN		equ		INT64	;Native Width Value Valid Only for 64-bit
 	UINTN		equ		UINT64	;Native Width Value Valid Only for 64-bit
-
-
 

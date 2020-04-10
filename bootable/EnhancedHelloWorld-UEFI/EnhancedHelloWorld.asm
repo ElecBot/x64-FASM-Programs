@@ -1,25 +1,28 @@
-;x64 UEFI Feature Test
-;An Enhanced Hello World Using the Improving UEFI FASM assembly library
-
-;Will use a custom MZ-DOS PE32+ Program Stub to be different from the standard and save a few bytes in the final output file
+;=============================;
+;x64 UEFI Enhanced Hello World;
+;=============================;
+;An Enhanced Hello World Assembly Program using the ever improving UEFI FASM Library
 
 ;-------------------;
 ;FASM Program Header;
 ;-------------------;
+;The following tells FASM to create an EFI executable application targeting an x64 Platform
+;	The ImageBase address value in the header is "at" 0x00400000 Windows NT application default
+;		https://docs.microsoft.com/en-us/windows/win32/debug/pe-format\
+;		optional-header-windows-specific-fields-image-only
+;FASM will use the custom MZ-DOS PE32+ Program Stub defined after "on"
+;	This saves a few bytes in the final output executable file
 format PE64 EFI at 0x400000 on '../UEFI-Program-MZ-DOS-Stub.exe'
-entry start		;Label name of the entry point
+entry start		;Label name of the program execution entry point
 
 ;-----------------;
 ;Inclued Libraries;
 ;-----------------;
-include '../UEFI.inc'	;Include UEFI FASM assembly library
+include '../UEFI.inc'	;Include UEFI FASM Library
 
-;-------------------;
+;-------------------;https://github.com/Shirk/Sublime-FASM-x86
 ;Numerical Constants;
 ;-------------------;
-NULL			= 0
-FALSE			= 0
-TRUE			= 1
 BITS_IN_HEX		= 4
 
 ;----------------;
@@ -75,23 +78,24 @@ _waitEventIndex	 UINTN 0
 ;-----------------------------;
 section '.bss' data readable writeable
 events:
-;_inputKey		_EFI_INPUT_KEY
 _inputBuffer	rw 100	;Reserve 100 characters for the input buffer
 _timerEvent		EFI_EVENT
-
 
 ;---------------;
 ;Relocation Data;
 ;---------------;
-section '.reloc' fixups data discardable	;A must? for UEFI...
+section '.reloc' fixups data discardable	;A must? for UEFI applications...
 
-;----;
+;====;
 ;Code;
-;----;
-;====================;
+;====;
+;The rest of the file defines executable read-only code
+section '.text' code executable readable
+
+;--------------------;
 ;Macros and Functions;
-;====================;
-section '.text' code executable readable	;read-only executable code
+;--------------------;
+
 ;Both ,acros and functions attempt to  perserve register values but do not currently peserve status register states
 
 printStr:		;Prints String Using Pointer value in r12
@@ -325,9 +329,9 @@ waitForEnterStroke:
 	SimpleTextInputWaitForKeyEvent _waitEventIndex
 	jmp waitForEnter
 
-;=========;
+;---------;
 ;Main Code;
-;=========;
+;---------;
 start:						;Entry Point Label
 	mov r10,rsp				;Move First Stack Pointer Value into r10
 	InitializeUEFI			;No Error Handling Yet
@@ -355,7 +359,6 @@ start:						;Entry Point Label
 	;Display the new baseline stack pointer value
 	OutputString r12,1
 	OutputHexNumber r11,_hexStrBuf,8,1
-
 	;Disable watchdog timer...hopefully
 	BootServicesFunction SetWatchdogTimer, 0, 0x10000, 0, 0
 	OutputStatus
@@ -383,7 +386,7 @@ start:						;Entry Point Label
 	OutputDecNumber [_modeRows],_decStrBuf,1
 	inc r11
 	cmp r11, r10
-	jb @b
+	jbe @b
 
 	;Loop for entered number
 	SimpleTextInputFunction Reset, TRUE
@@ -393,13 +396,25 @@ start:						;Entry Point Label
 selectMode:
 	OutputString _modeSelectStr.newLine,1
 	WaitForEnteredInput r10, _inputBuffer
-	mov		word [r10*2 + _inputBuffer],0
+
+	OutputString _newLineStr,1
+	OutputDecNumber r10,_decStrBuf,1
+	mov		r11, _inputBuffer
+	mov		word [r11 + r10*2],0
+	
+	OutputString _newLineStr,1
+	OutputString _inputBuffer,1
+
 	mov		r11w, word [_inputBuffer]
 	cmp		r11w,0x30		;Is At Least 0
 	jb		invalidMode
 	cmp		r11w,0x39		;Is No More Than 9
 	ja		invalidMode
 	InputDecNumber _inputBuffer, r11
+
+	OutputString _newLineStr,1
+	OutputDecNumber r11,_decStrBuf,1
+
 	cmp		r15, r11		;Check under max
 	jb		invalidMode
 	SimpleTextOutputFunction QueryMode, r11, _modeColumns, _modeRows
@@ -414,7 +429,9 @@ modeSelected:
 
 	OutputString _whatIsYourNameStr,1
 	WaitForEnteredInput r10, _inputBuffer
-	mov	word [r10*2 + _inputBuffer],0
+	mov		r11, _inputBuffer
+	mov		word [r11 + r10*2],0
+	;mov	word [r10*2 + _inputBuffer],0
 	SimpleTextOutputFunction EnableCursor, FALSE
 	SimpleTextOutputFunction SetAttribute, EFI_LIGHTBLUE or EFI_BACKGROUND_LIGHTGRAY
 	SimpleTextOutputFunction ClearScreen
@@ -440,13 +457,13 @@ calculateMiddlePosition:
 	OutputString _inputBuffer,1
 	OutputString _exclamationStr,1
 
-	BootServicesFunction CreateEvent, EVT_TIMER, 0,0,0, _timerEvent
-
+	BootServicesFunction CreateEvent, EVT_TIMER, TPL_CALLBACK,0,0, _timerEvent
+	;OutputStatus
 	;Set a timer event for 2 seconds from now
 	BootServicesFunction SetTimer, [_timerEvent], TimerRelative, 20000000
-
+	;OutputStatus
 	BootServicesFunction WaitForEvent, 1, _timerEvent, _waitEventIndex
-
+	;OutputStatus
 	;BootServicesFunction CheckEvent, _timerEvent
 	;OutputStatus
 	
