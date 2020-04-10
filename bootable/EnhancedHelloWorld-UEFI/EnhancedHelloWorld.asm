@@ -95,8 +95,8 @@ section '.text' code executable readable
 ;--------------------;
 ;Macros and Functions;
 ;--------------------;
-
-;Both ,acros and functions attempt to  perserve register values but do not currently peserve status register states
+;Macros and Functions attempt to properly perserve register values
+;	There is no garentee that status register states will be preserved
 
 printStr:		;Prints String Using Pointer value in r12
 	SimpleTextOutputFunction OutputString, r12
@@ -117,7 +117,11 @@ else
 end if
 }
 
-numToHexStr:	;Updates the hexadecimal string buffer in memory located at rbx with the text version of the value in register rax using rcx indicating number of bytes. Works on CHAR16 / UTF-16 Character Set. Expects rbx to have '0x' as starting characters
+;Updates the string buffer in memory located at rbx with the text version of the value
+;	Value is in register rax and rcx is used to indicate number of bytes.
+;	Designed for on CHAR16 / UTF-16 Character Set which is character format of UEFI
+;	Expects rbx hexadecimal string buffer to have '0x' as starting characters
+numToHexStr:
 	add		rbx,4
 	push	rdx
 numToHexStrLoop:
@@ -169,7 +173,9 @@ macro OutputStatus {
 	OutputHexNumber rax,_hexStrBuf,8,1
 }
 
-numToDecStr:	;Updates the decimal string buffer in memory (_decStrBuf) with the text version of the value in register rax. Works with CHAR16 / UTF-16 character set
+;Updates the decimal string buffer in memory (rbx) with the text version of a value
+;	The value is in register rax. Designed for CHAR16 / UTF-16 character set
+numToDecStr:
 	push	rbx				;save rbx value
 	mov		rbx,10			;put 10 into rbx
 	push	rcx				;save rcx value
@@ -335,7 +341,7 @@ waitForEnterStroke:
 start:						;Entry Point Label
 	mov r10,rsp				;Move First Stack Pointer Value into r10
 	InitializeUEFI			;No Error Handling Yet
-	mov r11,rsp				;Move Second Stack Pointer Value into r11, to compare the offset alignment of the sp in r10
+	mov r11,rsp				;Move Second Stack Pointer Value into r11
 	
 	;Initialize other elements of the UEFI FASM library
 	BootServicesInitialize
@@ -356,9 +362,10 @@ start:						;Entry Point Label
 	mov	r12, _stackPointerStr.newLine
 	OutputString r12,1
 	OutputHexNumber r10,_hexStrBuf,8,1
-	;Display the new baseline stack pointer value
+	;Display the new baseline stack pointer value -> Visual Comparison of adjusted stack pointer
 	OutputString r12,1
 	OutputHexNumber r11,_hexStrBuf,8,1
+	
 	;Disable watchdog timer...hopefully
 	BootServicesFunction SetWatchdogTimer, 0, 0x10000, 0, 0
 	OutputStatus
@@ -388,7 +395,7 @@ start:						;Entry Point Label
 	cmp r11, r10
 	jbe @b
 
-	;Loop for entered number
+	;Loop for entered mode number
 	SimpleTextInputFunction Reset, TRUE
 	SimpleTextOutputFunction EnableCursor, TRUE
 	
@@ -399,7 +406,7 @@ selectMode:
 
 	OutputString _newLineStr,1
 	OutputDecNumber r10,_decStrBuf,1
-	mov		r11, _inputBuffer
+	mov		r11, _inputBuffer		;This method of addressing is required for certain computers
 	mov		word [r11 + r10*2],0
 	
 	OutputString _newLineStr,1
@@ -425,13 +432,14 @@ invalidMode:
 	;OutputString _newLineStr,1
 	jmp selectMode
 modeSelected:
-	SimpleTextOutputFunction SetMode, r11
+	SimpleTextOutputFunction SetMode, r11	;Change to selected console out text mode
 
+	;Ask for your name and then print it into the center of the screen
 	OutputString _whatIsYourNameStr,1
 	WaitForEnteredInput r10, _inputBuffer
 	mov		r11, _inputBuffer
 	mov		word [r11 + r10*2],0
-	;mov	word [r10*2 + _inputBuffer],0
+	;mov	word [r10*2 + _inputBuffer],0	;Old mode that doesn't always work...???
 	SimpleTextOutputFunction EnableCursor, FALSE
 	SimpleTextOutputFunction SetAttribute, EFI_LIGHTBLUE or EFI_BACKGROUND_LIGHTGRAY
 	SimpleTextOutputFunction ClearScreen
@@ -451,12 +459,14 @@ calculateMiddlePosition:
 	;OutputDecNumber r12,_decStrBuf,1
 	;OutputString _xStr,1
 	;OutputDecNumber r11,_decStrBuf,1
-	SimpleTextOutputFunction SetCursorPosition, r12, r11
+	SimpleTextOutputFunction SetCursorPosition, r12, r11	;Output name in middle of output
 	;OutputDecNumber r10,_decStrBuf,1
 	OutputString _helloStr,1
 	OutputString _inputBuffer,1
 	OutputString _exclamationStr,1
-
+	
+	;Use timer services to wait for 2 seconds before proceeding
+	;Execution freezes here on for some computers
 	BootServicesFunction CreateEvent, EVT_TIMER, TPL_CALLBACK,0,0, _timerEvent
 	;OutputStatus
 	;Set a timer event for 2 seconds from now
@@ -467,8 +477,9 @@ calculateMiddlePosition:
 	;BootServicesFunction CheckEvent, _timerEvent
 	;OutputStatus
 	
+	;Press Enter to continue
 	OutputString _newLineStr,1
-	OutputString _enterContinueStr.newLine,1		;Display the press enter to continue string
+	OutputString _enterContinueStr.newLine,1	;Display the press enter to continue string
 	call	waitForEnter
 
 	OutputString _newLineStr,1

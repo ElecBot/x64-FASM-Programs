@@ -309,7 +309,7 @@ if ~ arg4 eq & ~ arg4 eq r9
 	mov		r9,arg4
 end if
 	mov		[TemporaryStackPointer],rsp ;Save Stack Pointer
-	and	rsp, (not 0xF)
+	and	rsp, (not 0xF)			;You haven't seen the last of this
 if ~ argE eq
 	numberOfStackArguments = 0
 forward
