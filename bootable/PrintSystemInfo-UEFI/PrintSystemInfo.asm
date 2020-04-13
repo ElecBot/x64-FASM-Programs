@@ -1,7 +1,8 @@
-;=============================;
-;x64 UEFI Enhanced Hello World;
-;=============================;
-;An Enhanced Hello World Assembly Program using the ever improving UEFI FASM Library
+;==========================;
+;x64 UEFI Print System Info;
+;==========================;
+;Prints the System and UEFI Info In an Organized Manor On the Screen
+;An assembly program using the ever improving UEFI FASM Library
 
 ;-------------------;
 ;FASM Program Header;
@@ -24,11 +25,12 @@ include '../UEFI.inc'	;Include UEFI FASM Library
 ;Numerical Constants;
 ;-------------------;
 BITS_IN_HEX		= 4
+MEMORY_MAP_BYTES	=	4096*10
 
 ;----------------;
 ;Symbol Constants;
 ;----------------;
-SNL equ 0xA,0xD	;String New Line Characters (LineFeed + CarriageReturn)
+SNL equ 10,13	;String New Line Characters
 
 ;-----------------;
 ;Helper Structures;
@@ -49,16 +51,22 @@ _newLineStr			CHAR16			SNL,0
 _spaceStr			CHAR16			' ',0
 _xStr				CHAR16			'x',0
 _exclamationStr		CHAR16			'!',0
+_indexStr			CHAR16			': ',0
 _statusCodeStr		CHAR16string	'Status Code: '
-_helloStr			CHAR16string	'Hello '
-_helloWorldStr		CHAR16string	'Hello World!'
-_stackPointerStr	CHAR16string	'Stack Pointer: '
-_textOutputMaxModeStr	CHAR16string	'Max Mode: '
-_textOutputModeStr	CHAR16string	'Mode: '
-_modeSelectStr		CHAR16string	'Enter a mode number: '
-_invalidInputStr	CHAR16string	'Invalid Input',SNL
-_whatIsYourNameStr	CHAR16string	'Enter your name: '
 _enterContinueStr	CHAR16string	'Press enter to continue...'
+_uefiInfoStr		CHAR16string	'UEFI Info:'
+_efiRevisionStr		CHAR16string	'EFI Revision: '
+_firmwareVendorStr	CHAR16string	'Firmware Vendor: '
+_firmwareRevStr		CHAR16string	'Firmware Revision: '
+_numTableEntriesStr	CHAR16string	'System Configuration Count: '
+_bufferIndexStr		CHAR16string	'Buffer Index '
+_descriptorSizeStr	CHAR16string	'Descriptor Byte Size: '
+_descriptorVerStr	CHAR16string	'Descriptor Version: '
+_memoryMapHeadStr	CHAR16string	'Memory Map Entry Type Pages ',\
+									'Physical Start Virtual Start Attributes'
+_memoryMapStr		CHAR16string	'Memory Map'
+_invalidInputStr	CHAR16string	'Invalid Input',SNL
+
 _keyPressedStr		CHAR16string	'Key Pressed: '
 
 ;---------------------------;
@@ -71,15 +79,22 @@ _modeColumns		UINTN 0
 _modeRows			UINTN 0
 _inputBufferIndex	UINTN 0
 _oneCharStr			CHAR16		'?',0
-_waitEventIndex	 UINTN 0
+_waitEventIndex		UINTN 0
+
+align EIGHT_BYTE_BOUNDARY	;For good measure
+_memoryMapSize				UINTN	MEMORY_MAP_BYTES
+_memoryMapKey				UINTN	0
+_memoryDescriptorSize		UINTN	0
+_memoryDescriptorVersion	UINT32	32
 
 ;-----------------------------;
 ;Read/Write Uninitialized Data;
 ;-----------------------------;
 section '.bss' data readable writeable
-events:
+align EIGHT_BYTE_BOUNDARY	;For good measure
+_memoryMap		rb MEMORY_MAP_BYTES
+
 _inputBuffer	rw 100	;Reserve 100 characters for the input buffer
-align SIXTEEN_BYTE_BOUNDARY
 _timerEvent		EFI_EVENT
 
 ;---------------;
@@ -338,152 +353,189 @@ waitForEnterStroke:
 	SimpleTextInputWaitForKeyEvent _waitEventIndex
 	jmp waitForEnter
 
+macro pressEnterToContinue {
+	OutputString _newLineStr,1
+	OutputString _enterContinueStr.newLine,1	;Display the press enter to continue string
+	call	waitForEnter
+}
+
 ;---------;
 ;Main Code;
 ;---------;
 start:						;Entry Point Label
-	mov r10,rsp				;Move First Stack Pointer Value into r10
 	InitializeUEFI			;No Error Handling Yet
-	mov r11,rsp				;Move Second Stack Pointer Value into r11
-	
+
 	;Initialize other elements of the UEFI FASM library
 	BootServicesInitialize
 	RuntimeServicesInitialize
 	SimpleTextInputInitialize
 	SimpleTextOutputInitialize
-	
+
+	;Disables the watchdog timer
+	BootServicesFunction SetWatchdogTimer, 0, 0x10000, 0, 0
+	OutputStatus
+	pressEnterToContinue
+
 	;Reset Text Output
 	SimpleTextOutputFunction Reset, TRUE
 	SimpleTextOutputFunction EnableCursor, FALSE
 	SimpleTextOutputFunction SetAttribute, EFI_WHITE or EFI_BACKGROUND_BLACK
 	SimpleTextOutputFunction ClearScreen
 
-	;Display the one and only Hello World String
-	OutputString _helloWorldStr,1
-
-	;Display the original stack pointer value
-	mov	r12, _stackPointerStr.newLine
-	OutputString r12,1
-	OutputHexNumber r10,_hexStrBuf,8,1
-	;Display the new baseline stack pointer value -> Visual Comparison of adjusted stack pointer
-	OutputString r12,1
-	OutputHexNumber r11,_hexStrBuf,8,1
-	
-	;Disable watchdog timer...hopefully
-	BootServicesFunction SetWatchdogTimer, 0, 0x10000, 0, 0
-	OutputStatus
-
-	;Display total number of modes (mode 1 / 80x50 may be unsupported)
-	SimpleTextOutputMode MaxMode
-	mov	r10,rax	;Move number of output modes to r10
-	dec r10
-	OutputString _textOutputMaxModeStr.newLine,1
-	OutputDecNumber r10,_decStrBuf,1
-
-	;Display Various Mode Options
-	xor r11,r11		;clear r11 - used for mode looping
+	;Set Text Output Mode To Max Rows
+	SimpleTextOutputMode MaxMode	;Get number of output modes into rax
+	mov	r10,rax				;Move number of output modes to r10
+	ClearRegister r11		;clear r11 - used for mode looping
+	ClearRegister r12		;clear r12 - used for holding max rows found so far
+	ClearRegister r13		;clear r13 - used for holding best index so far
+	;sub r11,1
+loopOutputModes:
+	SimpleTextOutputFunction QueryMode, r11, _modeColumns, _modeRows
+	inc r11
+	cmp rax, EFI_SUCCESS	;Check if Valid Mode
+	jne loopOutputModes		;jump back if information was not returned
+	cmp r12,[_modeRows]		;Compare max rows
+	jae	@f
+	mov r12,[_modeRows]
+	mov r13,r11
 @@:
-	SimpleTextOutputFunction QueryMode, r11, _modeColumns, _modeRows
-	inc r11
-	cmp rax, EFI_SUCCESS
-	jne @b	; jump back if information was not returned
-	dec r11
-	OutputString _textOutputModeStr.newLine,1
+	cmp r10,r11
+	ja loopOutputModes
+
+	;Switch Mode After Double-Check
+	dec r13
+	SimpleTextOutputFunction QueryMode, r13, _modeColumns, _modeRows
+	cmp rax, EFI_SUCCESS	;DoubleCheck if Valid Mode
+	jne enterAndExit		;Exit Program If Failed
+	SimpleTextOutputFunction SetMode, r13	;Change to selected console out text mode
+
+	;Display Basic UEFI Info
+	mov r10,[SystemTablePtr]
+	OutputString _uefiInfoStr,1
+	OutputString _efiRevisionStr.newLine,1
+	mov r12,EFI_TABLE_HEADER.Revision
+	mov	eax,[r10 + r12 + EFI_SYSTEM_TABLE.Hdr]
+	OutputHexNumber rax,_hexStrBuf,4,1
+	OutputString _firmwareVendorStr.newLine,1
+	mov	r12,[r10 + EFI_SYSTEM_TABLE.FirmwareVendorPtr]
+	OutputString r12, 1
+	OutputString _firmwareRevStr.newLine,1
+	mov	eax,[r10 + EFI_SYSTEM_TABLE.FirmwareRevision]
+	OutputHexNumber rax,_hexStrBuf,4,1
+
+	;Display Configuration Table Entries Top GUID 64 Bytes
+	OutputString _numTableEntriesStr.newLine,1
+	mov rax,[r10 + EFI_SYSTEM_TABLE.NumberOfTableEntries]
+	mov r11,rax
 	OutputDecNumber r11,_decStrBuf,1
-	OutputString _spaceStr,1
-	OutputDecNumber [_modeColumns],_decStrBuf,1
-	OutputString _xStr,1
-	OutputDecNumber [_modeRows],_decStrBuf,1
-	inc r11
-	cmp r11, r10
-	jbe @b
+	mov r12,[r10 + EFI_SYSTEM_TABLE.ConfigurationTablePtr]
+	ClearRegister r13
+	ClearRegister r14
+@@:
+	mov r15,[r12 + r13]
+	OutputString _bufferIndexStr.newLine,1
+	OutputDecNumber r14,_decStrBuf,1
+	OutputString _indexStr,1
+	OutputHexNumber r15,_hexStrBuf,8,1
+	add r13,24
+	inc r14
+	cmp r11,r14
+	ja	@b
 
-	;Loop for entered mode number
-	SimpleTextInputFunction Reset, TRUE
-	SimpleTextOutputFunction EnableCursor, TRUE
-	
-	mov r15, r10
-selectMode:
-	OutputString _modeSelectStr.newLine,1
-	WaitForEnteredInput r10, _inputBuffer
-
-	OutputString _newLineStr,1
-	OutputDecNumber r10,_decStrBuf,1
-	mov		r11, _inputBuffer		;This method of addressing is required for certain computers
-	mov		word [r11 + r10*2],0
-	
-	OutputString _newLineStr,1
-	OutputString _inputBuffer,1
-
-	mov		r11w, word [_inputBuffer]
-	cmp		r11w,0x30		;Is At Least 0
-	jb		invalidMode
-	cmp		r11w,0x39		;Is No More Than 9
-	ja		invalidMode
-	InputDecNumber _inputBuffer, r11
-
-	OutputString _newLineStr,1
-	OutputDecNumber r11,_decStrBuf,1
-
-	cmp		r15, r11		;Check under max
-	jb		invalidMode
-	SimpleTextOutputFunction QueryMode, r11, _modeColumns, _modeRows
-	cmp		rax, EFI_SUCCESS
-	je		modeSelected
-invalidMode:
-	OutputString _invalidInputStr.newLine,1
-	;OutputString _newLineStr,1
-	jmp selectMode
-modeSelected:
-	SimpleTextOutputFunction SetMode, r11	;Change to selected console out text mode
-
-	;Ask for your name and then print it into the center of the screen
-	OutputString _whatIsYourNameStr,1
-	WaitForEnteredInput r10, _inputBuffer
-	mov		r11, _inputBuffer
-	mov		word [r11 + r10*2],0
-	;mov	word [r10*2 + _inputBuffer],0	;Old mode that doesn't always work...???
-	SimpleTextOutputFunction EnableCursor, FALSE
-	SimpleTextOutputFunction SetAttribute, EFI_LIGHTBLUE or EFI_BACKGROUND_LIGHTGRAY
-	SimpleTextOutputFunction ClearScreen
-
-calculateMiddlePosition:
-	xor rdx,rdx
-	mov rax, [_modeRows]
-	mov	rbx, 2
-	div ebx
-	mov r11, rax
-	xor rdx,rdx
-	mov rax, [_modeColumns]
-	sub rax,7
-	sub rax,r10
-	div ebx
-	mov r12,rax
-	;OutputDecNumber r12,_decStrBuf,1
-	;OutputString _xStr,1
-	;OutputDecNumber r11,_decStrBuf,1
-	SimpleTextOutputFunction SetCursorPosition, r12, r11	;Output name in middle of output
-	;OutputDecNumber r10,_decStrBuf,1
-	OutputString _helloStr,1
-	OutputString _inputBuffer,1
-	OutputString _exclamationStr,1
-	
-	;Use timer services to wait for 2 seconds before proceeding
-	BootServicesFunction CreateEvent, EVT_TIMER, TPL_CALLBACK,0,0, _timerEvent
-	;OutputStatus
-	;Set a timer event for 2 seconds from now
-	BootServicesFunction SetTimer, [_timerEvent], TimerRelative, 20000000
-	;OutputStatus
-	BootServicesFunction WaitForEvent, 1, _timerEvent, _waitEventIndex
-	;OutputStatus
-	BootServicesFunction CheckEvent, _timerEvent
-	;OutputStatus
-	
 	;Press Enter to continue
-	OutputString _newLineStr,1
-	OutputString _enterContinueStr.newLine,1	;Display the press enter to continue string
-	call	waitForEnter
+	pressEnterToContinue
 
+	;Get Memory Map and Print Basic Info
+	SimpleTextOutputFunction ClearScreen
+	BootServicesFunction	GetMemoryMap,_memoryMapSize,_memoryMap,\
+							_memoryMapKey,_memoryDescriptorSize,_memoryDescriptorVersion
+	OutputStatus
+	cmp rax, EFI_SUCCESS
+	je @f
+	OutputDecNumber [_memoryMapSize],_decStrBuf,1
+	jmp enterAndExit
+@@:
+	OutputString _descriptorSizeStr.newLine,1
+	OutputDecNumber [_memoryDescriptorSize],_decStrBuf,1
+	OutputString _descriptorVerStr.newLine,1
+	mov eax,[_memoryDescriptorVersion]
+	OutputDecNumber rax,_decStrBuf,1
+
+	;Calculate number of memory entries -> store into r13
+	mov rax,[_memoryMapSize]
+	ClearRegister rdx
+	div [_memoryDescriptorSize]
+	mov r13,rax
+
+	OutputString _memoryMapHeadStr.newLine,1
+	mov r10,_memoryMap
+	mov r11,[_memoryDescriptorSize]
+	ClearRegister r12
+	mov r14,[_modeRows]
+	sub r14,4
+memoryMapLoop:
+	OutputString _memoryMapStr.newLine,1
+	OutputString _spaceStr,1
+	OutputDecNumber r12,_decStrBuf,1
+	OutputString _spaceStr,1
+	mov eax,[r10 + EFI_MEMORY_DESCRIPTOR.Type]
+	OutputDecNumber rax,_decStrBuf,1
+	OutputString _spaceStr,1
+	OutputDecNumber [r10 + EFI_MEMORY_DESCRIPTOR.NumberOfPages],_decStrBuf,1
+	OutputString _spaceStr,1
+	OutputHexNumber [r10 + EFI_MEMORY_DESCRIPTOR.PhysicalStart],_hexStrBuf,8,1
+	OutputString _spaceStr,1
+	OutputHexNumber [r10 + EFI_MEMORY_DESCRIPTOR.VirtualStart],_hexStrBuf,8,1
+	OutputString _spaceStr,1
+	OutputHexNumber [r10 + EFI_MEMORY_DESCRIPTOR.Attribute],_hexStrBuf,8,1
+	
+	SimpleTextOutputMode CursorRow
+	cmp rax,r14
+	jbe @f
+	pressEnterToContinue
+	SimpleTextOutputFunction ClearScreen
+	OutputString _memoryMapHeadStr.newLine,1
+@@:
+	add r10,r11
+	inc r12
+	cmp r13,r12
+	ja memoryMapLoop
+
+enterAndExit:
+	;Press Enter to continue
+	pressEnterToContinue
 	OutputString _newLineStr,1
+
 	ExitSuccessfullyUEFI
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

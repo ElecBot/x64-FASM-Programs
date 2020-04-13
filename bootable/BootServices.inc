@@ -29,12 +29,9 @@ enum TimerCancel, TimerPeriodic, TimerRelative
 	TPL_HIGH_LEVEL	=	31
 
 ;EFI_ALLOCATE_TYPE
-	AllocateAnyPages	=	0
-	AllocateMaxAddress	=	1
-	AllocateAddress		=	2
-	MaxAllocateType		=	3
+enum AllocateAnyPages, AllocateMaxAddress, AllocateAddress, MaxAllocateType
 
-;EFI_MEMORY_TYPE
+;EFI_MEMORY_TYPE	;Could be made enum in future
 	EfiReservedMemoryType		=	0
 	EfiLoaderCode				=	1
 	EfiLoaderData				=	2
@@ -141,6 +138,7 @@ struc _EFI_BOOT_SERVICES {
 
 struc _EFI_MEMORY_DESCRIPTOR {
 	.Type			UINT32
+align EIGHT_BYTE_BOUNDARY
 	.PhysicalStart	EFI_PHYSICAL_ADDRESS
 	.VirtualStart	EFI_VIRTUAL_ADDRESS
 	.NumberOfPages	UINT64
@@ -159,6 +157,7 @@ MemoryDescriptor	_EFI_MEMORY_DESCRIPTOR	;Data Structure used to describe memory
 ;Macros;
 ;------;
 VirtualStructure _EFI_BOOT_SERVICES, EFI_BOOT_SERVICES
+VirtualStructure _EFI_MEMORY_DESCRIPTOR, EFI_MEMORY_DESCRIPTOR
 
 macro BootServicesInitialize {
 	mov rbx,[SystemTablePtr]
@@ -172,10 +171,4 @@ common
 	mov rbx,[rbx + EFI_BOOT_SERVICES.#function]
 	CallFunction rbx, data
 }
-
-
-
-
-
-
 

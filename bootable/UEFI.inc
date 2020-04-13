@@ -10,7 +10,7 @@
 ;This text file is the entry point of the UEFI FASM library and should be included into projects.
 ;	Common UEFI constants, structures, and macros are defined in this file.
 ;	Supported included files extend the library capabilities into seperate sections.
-;Updated April 10th 2020
+;Updated April 13th 2020
 
 ;--------------------------;
 ;Common Numerical Constants;
@@ -158,7 +158,7 @@ struc _EFI_TABLE_HEADER {
 	.Signature    	UINT64
 	.Revision     	UINT32
 	.HeaderSize   	UINT32
-	.CRC32        	UINT32
+	.CRC32        	UINT32	;CCITT32 CRC algorithm - Seed Polynomial: 0x04c11db7
 	.Reserved     	UINT32
 }
 
@@ -166,7 +166,7 @@ struc _EFI_SYSTEM_TABLE {
 	.Hdr					_EFI_TABLE_HEADER
 	.FirmwareVendorPtr		POINTER			;CHAR16
 	.FirmwareRevision		UINT32
-align EIGHT_BYTE_BOUNDARY					;Necessary For Some Slightly Confusing Reason
+align EIGHT_BYTE_BOUNDARY					;Necessary For x64 Structure Alignment Preferences
 	.ConsoleInHandle		EFI_HANDLE
 	.ConInPtr				POINTER			;EFI_SIMPLE_TEXT_INPUT_PROTOCOL
 	.ConsoleOutHandle		EFI_HANDLE
@@ -182,7 +182,7 @@ align EIGHT_BYTE_BOUNDARY					;Necessary For Some Slightly Confusing Reason
 ;Expand the following Information More
 struc _EFI_CONFIGURATION_TABLE {
 	.VendorGuid			EFI_GUID
-	.VendorTablePtr		POINTER		;Void
+	.VendorTablePtr		POINTER
 }
 
 struc _EFI_PROPERTIES_TABLE {
@@ -259,7 +259,10 @@ macro VirtualStructure struct,name {
 	end virtual
 }
 
+;Virtual structures used in below macros
+VirtualStructure _EFI_TABLE_HEADER, EFI_TABLE_HEADER
 VirtualStructure _EFI_SYSTEM_TABLE, EFI_SYSTEM_TABLE
+VirtualStructure _EFI_CONFIGURATION_TABLE, EFI_CONFIGURATION_TABLE
 
 ;Helper UEFI initialization macro that should be called at the beginning of a UEFI application
 ;Must be called before using any other library macros and before rcx,rdx,rsp change
@@ -271,75 +274,179 @@ macro InitializeUEFI {
 	;Move register values into data locations
 	mov [ImageHandle], rcx
 	mov [SystemTablePtr], rdx
-	mov [ReturnAddressPtr], rsp
-	and	rsp, (not 0xF) ;16-Byte stack alignment...needs double checking and understanding
-	;Need to save other important UEFI variables here including stack pointer...?
+	mov [ReturnAddressPtr], rsp		;Saving Stack Pointer For Exiting UEFI
+	;and	rsp, (not 0xF) ;16-Byte stack alignment...needs double checking and understanding
 	;Do some basic checking on system Table Here
-	;Start initializing other UEFI Services here potentially
 }
 
 
+;Helper call function macro for UEFI functions based on the specified calling convention above
+;Only works with general registers / and addresses for now integer arguments for now
+;rax and derivatives is always considered volatile but returns the result
 
-;Helper call function macro based on the specified UEFI calling convention
-;Runs on General Registers Only for right now
-;Does not currently account for return values possibly needed in arguments, arg5+
-;Reminder, push accepts arguments from memory or registers
+;Self Reminder...push accepts arguments from memory or registers
+;Compatibility Remider...only push and pop with registers...understanding
 macro CallFunction function*,arg1,arg2,arg3,arg4,[argE] {
 common
-	;Save Volatile Register State...might be able to simplfy later
-	;Need to Work on logic too..maybe make sure values are saved by highest caller
-;	push	rax
-;	push	rcx
-;	push	rdx
-;	push	r8
-;	push	r9
-	push	r10
-	push	r11
-	;Put Arguments in corresponding registers if they exist and are different
-if ~ arg1 eq & ~ arg1 eq rcx
-	mov		rcx,arg1
-end if
-if ~ arg2 eq & ~ arg2 eq rdx
-	mov		rdx,arg2
-end if
-if ~ arg3 eq & ~ arg3 eq r8
-	mov		r8,arg3
-end if
-if ~ arg4 eq & ~ arg4 eq r9
-	mov		r9,arg4
-end if
-	mov		[TemporaryStackPointer],rsp ;Save Stack Pointer
-	and	rsp, (not 0xF)			;You haven't seen the last of this
-if ~ argE eq
+;Saves all argument registers except when registers are pre-setup
+local rcxPush,rdxPush,r8Push,r9Push 
+	rcxPush	= 1
+	rdxPush	= 1
+	r8Push	= 1
+	r9Push	= 1
+local numberOfStackArguments
 	numberOfStackArguments = 0
-forward
+;local saver10, saver11
+	;saver10 = 0
+	;saver11 = 0
+	push r10	;Save r10 and r11 always
+	push r11
+	;Put Arguments in corresponding registers if they exist and are different
+if ~ arg1 eq		;If True then there is a first argument
+	if ~ arg1 in <cl,cx,ecx,rcx>		;Push / save rcx if argument isn't rcx or a derivative
+		push rcx
+	;Maybe rearrange if-else if order for faster FASM assembly time
+	if arg1 in <dl,r8b,r9b,r10b,r11b,r12b,r13b,r14b,r15b>
+		mov cl,arg1
+	else if arg1 in <dx,r8w,r9w,r10w,r11w,r12w,r13w,r14w,r15w>
+		mov cx,arg1
+	else if arg1 in <edx,r8d,r9d,r10d,r11d,r12d,r13d,r14d,r15d>
+		mov ecx,arg1
+	else if arg1 in <rdx,r8,r9,r10,r11,r12,r13,r14,r15>
+		mov rcx,arg1
+	else if arg1 in <al,ah,ax,eax,rax,bl,bh,bx,ebx,rbx,ch,dh,\
+					spl,sp,esp,rsp,bpl,bp,ebp,sil,si,esi,rsi,dil,di,edi,rdi>
+		err 1
+	else	;Handling addresses / immediate value / offset...will throw fasm error when issue
+		mov rcx,arg1
+	end if
+	else
+		rcxPush = 0
+	end if
+else
+	push rcx
+end if
+if ~ arg2 eq
+	if ~ arg2 in <dl,dx,edx,rdx>
+		push rdx
+	if arg2 in <r8b,r9b,r10b,r11b,r12b,r13b,r14b,r15b>
+		mov dl,arg2
+	else if arg2 in <r8w,r9w,r10w,r11w,r12w,r13w,r14w,r15w>
+		mov dx,arg2
+	else if arg2 in <r8d,r9d,r10d,r11d,r12d,r13d,r14d,r15d>
+		mov edx,arg2
+	else if arg2 in <r8,r9,r10,r11,r12,r13,r14,r15>
+		mov rdx,arg2
+	else if arg2 in <al,ah,ax,eax,rax,bl,bh,bx,ebx,rbx,cl,ch,cx,ecx,rcx,dh,\
+					spl,sp,esp,rsp,bpl,bp,ebp,sil,si,esi,rsi,dil,di,edi,rdi>
+		err 1
+	else	;Handling addresses / immediate value / offset...will throw fasm error when issue
+		mov rdx,arg2
+	end if
+	else
+		rdxPush = 0
+	end if
+else
+	push rdx
+end if
+if ~ arg3 eq
+	if ~ arg3 in <r8b,r8w,r8d,r8>
+		push r8
+	if arg3 in <r9b,r10b,r11b,r12b,r13b,r14b,r15b>
+		mov r8b,arg3
+	else if arg3 in <r9w,r10w,r11w,r12w,r13w,r14w,r15w>
+		mov r8w,arg3
+	else if arg3 in <r9d,r10d,r11d,r12d,r13d,r14d,r15d>
+		mov r8d,arg3
+	else if arg3 in <r9,r10,r11,r12,r13,r14,r15>
+		mov r8,arg3
+	else if arg3 in <al,ah,ax,eax,rax,bl,bh,bx,ebx,rbx,cl,ch,cx,ecx,rcx,dl,dh,dx,edx,rdx,\
+					spl,sp,esp,rsp,bpl,bp,ebp,sil,si,esi,rsi,dil,di,edi,rdi>
+		err 1
+	else	;Handling addresses / immediate value / offset...will throw fasm error when issue
+		mov r8,arg3
+	end if
+	else
+		r8Push = 0
+	end if
+else
+	push r8
+end if
+if ~ arg4 eq
+	if ~ arg4 in <r9b,r9w,r9d,r9>
+		push r9
+	if arg4 in <r10b,r11b,r12b,r13b,r14b,r15b>
+		mov r9b,arg4
+	else if arg4 in <r10w,r11w,r12w,r13w,r14w,r15w>
+		mov r9w,arg4
+	else if arg4 in <r10d,r11d,r12d,r13d,r14d,r15d>
+		mov r9d,arg4
+	else if arg4 in <r10,r11,r12,r13,r14,r15>
+		mov r9,arg4
+	else if arg4 in <al,ah,ax,eax,rax,bl,bh,bx,ebx,rbx,cl,ch,cx,ecx,rcx,dl,dh,dx,edx,rdx,\
+					r8b,r8w,r8q,r8,\
+					spl,sp,esp,rsp,bpl,bp,ebp,sil,si,esi,rsi,dil,di,edi,rdi>
+		err 1
+	else	;Handling addresses / immediate value / offset...will throw fasm error when issue
+		mov r9,arg4
+	end if
+	else
+		r9Push = 0
+	end if
+else
+	push r9
+end if
+	mov [TemporaryStackPointer],rsp ;Save Stack Pointer
+	and rsp,(not 0xF)	;Always Realign the stack to 16-byte boundary...for now
+if ~ argE eq	;True if there are any remaining arguments
+forward	;Counte Number of Additional / Stack Arguments
 	numberOfStackArguments = numberOfStackArguments + 1
 common
-if numberOfStackArguments mod 2 = 1
-	push	rax
+	if numberOfStackArguments and 1	;True if odd
+		push rax	;Maybe sub rsp,4 would be better? to keep alignment
+	end if
+reverse ;Push remaing arguments (in argE list) in reverse order onto the stack
+	;moving into rax before pushing for compatibility reasons
+	if argE in <al,ah,ax,eax,rax,bl,bh,bx,ebx,rbx,cl,ch,cx,ecx,rcx,dl,dh,dx,edx,rdx,\
+					r8b,r8w,r8q,r8,r9b,r9w,r9q,r9\
+					spl,sp,esp,rsp,bpl,bp,ebp,sil,si,esi,rsi,dil,di,edi,rdi>
+		err Invalid argument argE
+	else if argE in <r10b,r11b,r12b,r13b,r14b,r15b>
+		mov al,argE
+	else if argE in <r10w,r11w,r12w,r13w,r14w,r15w>
+		mov ax,argE
+	else if argE in <r10d,r11d,r12d,r13d,r14d,r15d>
+		mov eax,argE
+	else if argE in <r10,r11,r12,r13,r14,r15>
+		mov rax,argE
+	else
+		mov rax,argE
+	end if
+	push rax
+common	;Ending Common value
 end if
-reverse ;Push arguments in argE list in reverse order onto the stack
-	push	qword argE
 common
-end if
-	
-common
-	sub		rsp, NATIVE_BYTE_COUNT*4	;Reserve "shadow space" for parameters passed by register
-    call	function	;rbx should be used for this...?
+	sub		rsp, 8*4	;Reserve "shadow space" for parameters passed by register
+	call	function	;rbx should be used for this...?
 	mov		rsp,[TemporaryStackPointer]
-if ~ argE eq
-;forward	
-	;pop		argE	;temp disable
-common
-	
-else
-	;add		rsp, NATIVE_BYTE_COUNT*4	;Undo "shadow space" for parameters passed by register
+
+if r9Push
+	pop r9
 end if
-	pop		r11
-	pop		r10
+if r8Push
+	pop r8
+end if
+if rdxPush
+	pop rdx
+end if
+if rcxPush
+	pop rcx
+end if
+	pop r11
+	pop r10
 }
 
-macro enum [parameters] {
+macro enum [parameters] {	;C-like simple enum declaration
 common
 	local enumValue
 	enumValue = 0
@@ -348,9 +455,18 @@ forward
 	enumValue	=	enumValue + 1
 }
 
+macro ClearRegister register* {		;Contains Optimal way to Clear / Reset Register
+	xor	register,register
+}
+
+;----------------------------------;
+;UEFI FASM Library Support Sections;
+;----------------------------------;
+;Included Library Files
 include 'BootServices.inc'
 include 'RuntimeServices.inc'
 include 'ConsoleSupport.inc'
+;include 'UEFIdata.inc'
 
 ;--------------------------;
 ;Symbolic Constants (Cont.);
